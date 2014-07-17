@@ -99,6 +99,12 @@ func (store *Store) find(field string, cmp func(string) bool) DocSet {
 	return matching
 }
 
+func (store *Store) FindRange(field, start, end string) DocSet {
+
+	return store.find(field, func(foo string) bool {
+		return foo >= start && foo <= end
+	})
+}
 func (store *Store) FindExact(field, val string) DocSet {
 
 	return store.find(field, func(foo string) bool {
@@ -106,7 +112,7 @@ func (store *Store) FindExact(field, val string) DocSet {
 	})
 }
 
-func (store *Store) FindContaining(field, val string) DocSet {
+func (store *Store) FindContains(field, val string) DocSet {
 	return store.find(field, func(foo string) bool {
 		return strings.Contains(foo, val)
 	})
