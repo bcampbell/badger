@@ -2,6 +2,7 @@ package crummy
 
 import (
 	//	"fmt"
+	"bytes"
 	"testing"
 )
 
@@ -11,9 +12,8 @@ type TestDoc struct {
 	Tags   []string
 }
 
-func TestSimple(t *testing.T) {
-
-	store := NewStore(TestDoc{})
+func dummyCollection() *Collection {
+	coll := NewCollection(TestDoc{})
 
 	testData := []*TestDoc{
 		&TestDoc{"1", "red", []string{"primary", "reddish"}},
@@ -23,18 +23,23 @@ func TestSimple(t *testing.T) {
 		&TestDoc{"five", "crimson", []string{"reddish"}},
 	}
 	for _, dat := range testData {
-		store.Put(dat.ID, dat)
+		coll.Put(dat.ID, dat)
 	}
+	return coll
+}
 
-	if store.Count() != 5 {
+func TestSimple(t *testing.T) {
+
+	coll := dummyCollection()
+	if coll.Count() != 5 {
 		t.Error("Count error")
 	}
 
-	greens := store.FindExact("Colour", "green")
+	greens := coll.FindExact("Colour", "green")
 	//	fmt.Println(greens)
-	reds := store.FindExact("Colour", "crimson")
-	reds = Union(reds, store.FindExact("Colour", "pink"))
-	reds = Union(reds, store.FindExact("Colour", "red"))
+	reds := coll.FindExact("Colour", "crimson")
+	reds = Union(reds, coll.FindExact("Colour", "pink"))
+	reds = Union(reds, coll.FindExact("Colour", "red"))
 
 	//	fmt.Println(reds)
 	if len(greens) != 1 {
@@ -45,14 +50,36 @@ func TestSimple(t *testing.T) {
 	}
 
 	//
-	if len(store.FindExact("Tags", "reddish")) != 3 {
+	if len(coll.FindExact("Tags", "reddish")) != 3 {
 		t.Error("wrong number tagged reddish")
 	}
-	if len(store.FindExact("Tags", "uber")) != 0 {
+	if len(coll.FindExact("Tags", "uber")) != 0 {
 		t.Error("wrong number tagged uber")
 	}
 
-	if len(store.FindContaining("Tags", "reddish")) != 3 {
+	if len(coll.FindContains("Tags", "reddish")) != 3 {
 		t.Error("wrong number tagged reddish")
 	}
+}
+
+func TestReadWrite(t *testing.T) {
+	// save out the dummy data then read it back in
+
+	coll := dummyCollection()
+	var buf bytes.Buffer
+	err := coll.Write(&buf)
+	if err != nil {
+		t.Error("write failed")
+	}
+
+	coll2, err := Read(&buf, TestDoc{})
+	if err != nil {
+		t.Error("read failed")
+	}
+
+	if coll.Count() != coll2.Count() {
+		t.Error("count mismatched")
+
+	}
+	// TODO: run through and ensure docs are identical!
 }

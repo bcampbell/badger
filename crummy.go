@@ -8,61 +8,48 @@ import (
 	"strings"
 )
 
+var version string = "1"
+
 // Caveats:
-// - have to store ptrs to structs
+// - have to coll ptrs to structs
 // - can only query on string and []string fields (but can store anything)
 //
-type Store struct {
+type Collection struct {
 	docs    map[string]interface{}
 	docType reflect.Type
 }
 
 type DocSet map[string]struct{}
 
-func NewStore(exampleDoc interface{}) *Store {
-	store := &Store{
+func NewCollection(exampleDoc interface{}) *Collection {
+	coll := &Collection{
 		docs:    make(map[string]interface{}),
 		docType: reflect.TypeOf(exampleDoc),
 	}
 
-	fmt.Printf("New store docType=%s\n", store.docType)
-	return store
-}
-func getString(doc interface{}, field string) string {
-	v := reflect.ValueOf(doc)
-	s := v.Elem()
-
-	f := s.FieldByName(field)
-	if !f.IsValid() {
-		panic(field + " not found")
-	}
-	if f.Kind() != reflect.String {
-		panic(field + " not a string")
-	}
-
-	return f.String()
+	return coll
 }
 
-func (store *Store) Count() int {
-	return len(store.docs)
+func (coll *Collection) Count() int {
+	return len(coll.docs)
 }
 
-func (store *Store) Put(id string, doc interface{}) {
-	store.docs[id] = doc
+func (coll *Collection) Put(id string, doc interface{}) {
+	coll.docs[id] = doc
 }
 
-func (store *Store) FindAll() DocSet {
+func (coll *Collection) FindAll() DocSet {
 	matching := DocSet{}
-	for id, _ := range store.docs {
+	for id, _ := range coll.docs {
 		matching[id] = struct{}{}
 	}
 	return matching
 }
 
-func (store *Store) find(field string, cmp func(string) bool) DocSet {
+func (coll *Collection) find(field string, cmp func(string) bool) DocSet {
 
 	// resolve the field
-	sf, ok := store.docType.FieldByName(field)
+	sf, ok := coll.docType.FieldByName(field)
 	if !ok {
 		panic("couldn't resolve " + field)
 	}
@@ -73,7 +60,7 @@ func (store *Store) find(field string, cmp func(string) bool) DocSet {
 	switch sf.Type.Kind() {
 	case reflect.String:
 		//
-		for id, doc := range store.docs {
+		for id, doc := range coll.docs {
 			s := reflect.ValueOf(doc).Elem() // get struct
 			f := s.FieldByIndex(sf.Index)
 			if cmp(f.String()) {
@@ -82,7 +69,7 @@ func (store *Store) find(field string, cmp func(string) bool) DocSet {
 		}
 	case reflect.Slice:
 		// it's []string
-		for id, doc := range store.docs {
+		for id, doc := range coll.docs {
 			s := reflect.ValueOf(doc).Elem() // get struct
 			f := s.FieldByIndex(sf.Index)    // get slice
 			// check each item in the slice
@@ -99,21 +86,21 @@ func (store *Store) find(field string, cmp func(string) bool) DocSet {
 	return matching
 }
 
-func (store *Store) FindRange(field, start, end string) DocSet {
+func (coll *Collection) FindRange(field, start, end string) DocSet {
 
-	return store.find(field, func(foo string) bool {
+	return coll.find(field, func(foo string) bool {
 		return foo >= start && foo <= end
 	})
 }
-func (store *Store) FindExact(field, val string) DocSet {
+func (coll *Collection) FindExact(field, val string) DocSet {
 
-	return store.find(field, func(foo string) bool {
+	return coll.find(field, func(foo string) bool {
 		return foo == val
 	})
 }
 
-func (store *Store) FindContains(field, val string) DocSet {
-	return store.find(field, func(foo string) bool {
+func (coll *Collection) FindContains(field, val string) DocSet {
+	return coll.find(field, func(foo string) bool {
 		return strings.Contains(foo, val)
 	})
 }
@@ -141,31 +128,71 @@ func Intersect(a, b DocSet) DocSet {
 	return out
 }
 
-func Load(in io.Reader, exampleDoc interface{}) (*Store, error) {
+type header struct {
+	Version string
+	DocType string
+	Count   int
+}
 
-	store := NewStore(exampleDoc)
+func Read(in io.Reader, exampleDoc interface{}) (*Collection, error) {
 
-	// create a map of our desired doctype to unmarshal into
-	inMapType := reflect.MapOf(reflect.TypeOf(""), reflect.PtrTo(store.docType))
-
-	inMap := reflect.New(inMapType)
+	coll := NewCollection(exampleDoc)
 
 	dec := json.NewDecoder(in)
-	err := dec.Decode(inMap.Interface())
+	var hdr header
+
+	var err error
+	err = dec.Decode(&hdr)
 	if err != nil {
 		return nil, err
 	}
 
-	// now load the docs (of correct doctype) into the store
-	for _, key := range reflect.Indirect(inMap).MapKeys() {
-		val := reflect.Indirect(inMap).MapIndex(key)
-		store.Put(key.String(), val.Interface())
+	if hdr.Version != version {
+		return nil, fmt.Errorf("invalid version")
 	}
 
-	return store, nil
+	if hdr.DocType != coll.docType.String() {
+		return nil, fmt.Errorf("doc type mismatch (expected '%s', got '%s')", coll.docType.String(), hdr.DocType)
+	}
+
+	inType := reflect.PtrTo(coll.docType)
+	for i := 0; i < hdr.Count; i++ {
+		var key string
+		doc := reflect.New(inType)
+		err = dec.Decode(&key)
+		if err != nil {
+			return nil, err
+		}
+		err = dec.Decode(doc.Interface())
+		if err != nil {
+			return nil, err
+		}
+		coll.Put(key, doc.Interface())
+	}
+
+	return coll, nil
 }
 
-func (store *Store) Write(out io.Writer) error {
+func (coll *Collection) Write(out io.Writer) error {
+	var err error
 	enc := json.NewEncoder(out)
-	return enc.Encode(store.docs)
+
+	hdr := header{Version: version,
+		DocType: coll.docType.String(),
+		Count:   len(coll.docs)}
+	err = enc.Encode(hdr)
+	if err != nil {
+		return err
+	}
+	for key, doc := range coll.docs {
+		err = enc.Encode(key)
+		if err != nil {
+			return err
+		}
+		err = enc.Encode(doc)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }

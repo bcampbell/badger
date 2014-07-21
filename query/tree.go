@@ -59,21 +59,21 @@ func DumpTree(q *Query, indent int) string {
 	return out
 }
 
-func (q *Query) Perform(store *crummy.Store) crummy.DocSet {
+func (q *Query) Perform(coll *crummy.Collection) crummy.DocSet {
 	switch q.op {
 	case Exact:
-		return store.FindExact(q.field, q.val)
+		return coll.FindExact(q.field, q.val)
 	case Contains:
-		return store.FindContains(q.field, q.val)
+		return coll.FindContains(q.field, q.val)
 	case Range:
-		return store.FindRange(q.field, q.val, q.val2)
+		return coll.FindRange(q.field, q.val, q.val2)
 	case Intersect:
-		a := q.left.Perform(store)
-		b := q.right.Perform(store)
+		a := q.left.Perform(coll)
+		b := q.right.Perform(coll)
 		return crummy.Intersect(a, b)
 	case Union:
-		a := q.left.Perform(store)
-		b := q.right.Perform(store)
+		a := q.left.Perform(coll)
+		b := q.right.Perform(coll)
 		return crummy.Union(a, b)
 	case Diff:
 		panic("not implemented yet")
