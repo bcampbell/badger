@@ -1,26 +1,32 @@
 package crummy
 
 import (
-	//	"fmt"
 	"bytes"
+	"fmt"
 	"testing"
 )
 
+type SubDoc struct {
+	Name     string
+	ShoeSize int
+}
+
 type TestDoc struct {
-	ID     string
-	Colour string
-	Tags   []string
+	ID      string
+	Colour  string
+	Tags    []string
+	Details SubDoc
 }
 
 func dummyCollection() *Collection {
 	coll := NewCollection(TestDoc{})
 
 	testData := []*TestDoc{
-		&TestDoc{"1", "red", []string{"primary", "reddish"}},
-		&TestDoc{"two", "green", []string{"primary"}},
-		&TestDoc{"3", "blue", []string{"primary"}},
-		&TestDoc{"4", "pink", []string{"reddish"}},
-		&TestDoc{"five", "crimson", []string{"reddish"}},
+		&TestDoc{"1", "red", []string{"primary", "reddish"}, SubDoc{}},
+		&TestDoc{"two", "green", []string{"primary"}, SubDoc{"Bob", 42}},
+		&TestDoc{"3", "blue", []string{"primary"}, SubDoc{}},
+		&TestDoc{"4", "pink", []string{"reddish"}, SubDoc{}},
+		&TestDoc{"five", "crimson", []string{"reddish"}, SubDoc{}},
 	}
 	for _, dat := range testData {
 		coll.Put(dat.ID, dat)
@@ -81,5 +87,18 @@ func TestReadWrite(t *testing.T) {
 		t.Error("count mismatched")
 
 	}
-	// TODO: run through and ensure docs are identical!
+	// make sure result is kind of sane
+	greens := coll2.FindExact("Colour", "green")
+	if len(greens) != 1 {
+		t.Error("Wrong number of greens")
+	}
+	/*
+		for id, _ := range coll.FindAll() {
+			a := coll.Get(id).(*TestDoc)
+
+			b := coll2.Get(id).(*TestDoc)
+			fmt.Printf("%v %v\n", a, b)
+		}
+	*/
+
 }

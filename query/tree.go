@@ -16,11 +16,10 @@ const (
 )
 
 type Query struct {
-	op        nodeKind
-	field     string
-	val, val2 string
-	left      *Query
-	right     *Query
+	op          nodeKind
+	field       string
+	val, val2   string
+	left, right *Query
 }
 
 func (q *Query) String() string {

@@ -1,7 +1,7 @@
 package crummy
 
 import (
-	"encoding/json"
+	"encoding/gob"
 	"fmt"
 	"io"
 	"reflect"
@@ -11,7 +11,7 @@ import (
 var version string = "1"
 
 // Caveats:
-// - have to coll ptrs to structs
+// - have to store ptrs to structs
 // - can only query on string and []string fields (but can store anything)
 //
 type Collection struct {
@@ -36,6 +36,11 @@ func (coll *Collection) Count() int {
 
 func (coll *Collection) Put(id string, doc interface{}) {
 	coll.docs[id] = doc
+}
+
+// TODO: temporary - come up with something more elegant
+func (coll *Collection) Get(id string) interface{} {
+	return coll.docs[id]
 }
 
 func (coll *Collection) FindAll() DocSet {
@@ -128,37 +133,32 @@ func Intersect(a, b DocSet) DocSet {
 	return out
 }
 
-type header struct {
-	Version string
-	DocType string
-	Count   int
-}
-
 func Read(in io.Reader, exampleDoc interface{}) (*Collection, error) {
+	dec := gob.NewDecoder(in)
 
 	coll := NewCollection(exampleDoc)
-
-	dec := json.NewDecoder(in)
-	var hdr header
-
+	var ver string
 	var err error
-	err = dec.Decode(&hdr)
+	err = dec.Decode(&ver)
 	if err != nil {
 		return nil, err
 	}
 
-	if hdr.Version != version {
+	if ver != version {
 		return nil, fmt.Errorf("invalid version")
 	}
 
-	if hdr.DocType != coll.docType.String() {
-		return nil, fmt.Errorf("doc type mismatch (expected '%s', got '%s')", coll.docType.String(), hdr.DocType)
+	var count int
+	err = dec.Decode(&count)
+	if err != nil {
+		return nil, err
 	}
 
-	inType := reflect.PtrTo(coll.docType)
-	for i := 0; i < hdr.Count; i++ {
+	//inType := reflect.PtrTo(coll.docType)
+
+	for i := 0; i < count; i++ {
 		var key string
-		doc := reflect.New(inType)
+		doc := reflect.New(coll.docType)
 		err = dec.Decode(&key)
 		if err != nil {
 			return nil, err
@@ -170,17 +170,18 @@ func Read(in io.Reader, exampleDoc interface{}) (*Collection, error) {
 		coll.Put(key, doc.Interface())
 	}
 
-	return coll, nil
+	return coll, err
 }
 
 func (coll *Collection) Write(out io.Writer) error {
 	var err error
-	enc := json.NewEncoder(out)
+	enc := gob.NewEncoder(out)
 
-	hdr := header{Version: version,
-		DocType: coll.docType.String(),
-		Count:   len(coll.docs)}
-	err = enc.Encode(hdr)
+	err = enc.Encode(version)
+	if err != nil {
+		return err
+	}
+	err = enc.Encode(len(coll.docs))
 	if err != nil {
 		return err
 	}
