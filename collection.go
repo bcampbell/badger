@@ -19,8 +19,6 @@ type Collection struct {
 	docType reflect.Type
 }
 
-type DocSet map[string]struct{}
-
 func NewCollection(exampleDoc interface{}) *Collection {
 	coll := &Collection{
 		docs:    make(map[string]interface{}),
@@ -43,15 +41,15 @@ func (coll *Collection) Get(id string) interface{} {
 	return coll.docs[id]
 }
 
-func (coll *Collection) FindAll() DocSet {
-	matching := DocSet{}
+func (coll *Collection) findAll() docSet {
+	matching := docSet{}
 	for id, _ := range coll.docs {
 		matching[id] = struct{}{}
 	}
 	return matching
 }
 
-func (coll *Collection) find(field string, cmp func(string) bool) DocSet {
+func (coll *Collection) find(field string, cmp func(string) bool) docSet {
 
 	// resolve the field
 	sf, ok := coll.docType.FieldByName(field)
@@ -59,7 +57,7 @@ func (coll *Collection) find(field string, cmp func(string) bool) DocSet {
 		panic("couldn't resolve " + field)
 	}
 
-	matching := DocSet{}
+	matching := docSet{}
 
 	// string or []string?
 	switch sf.Type.Kind() {
@@ -91,46 +89,23 @@ func (coll *Collection) find(field string, cmp func(string) bool) DocSet {
 	return matching
 }
 
-func (coll *Collection) FindRange(field, start, end string) DocSet {
+func (coll *Collection) findRange(field, start, end string) docSet {
 
 	return coll.find(field, func(foo string) bool {
 		return foo >= start && foo <= end
 	})
 }
-func (coll *Collection) FindExact(field, val string) DocSet {
+func (coll *Collection) findExact(field, val string) docSet {
 
 	return coll.find(field, func(foo string) bool {
 		return foo == val
 	})
 }
 
-func (coll *Collection) FindContains(field, val string) DocSet {
+func (coll *Collection) findContains(field, val string) docSet {
 	return coll.find(field, func(foo string) bool {
 		return strings.Contains(foo, val)
 	})
-}
-
-func Union(a, b DocSet) DocSet {
-	out := DocSet{}
-	var id string
-	for id, _ = range a {
-		out[id] = struct{}{}
-	}
-	for id, _ = range b {
-		out[id] = struct{}{}
-	}
-	return out
-}
-
-func Intersect(a, b DocSet) DocSet {
-	out := DocSet{}
-	var id string
-	for id, _ = range a {
-		if _, got := b[id]; got {
-			out[id] = struct{}{}
-		}
-	}
-	return out
 }
 
 func Read(in io.Reader, exampleDoc interface{}) (*Collection, error) {
@@ -196,4 +171,40 @@ func (coll *Collection) Write(out io.Writer) error {
 		}
 	}
 	return nil
+}
+
+// eg
+// var out []*Document
+// coll.Find(q, &out)
+func (coll *Collection) Find(q *Query, result interface{}) {
+	var resultv, slicev reflect.Value
+	var elementt reflect.Type
+	var typeOK = false
+	// we're very picky about what we shove the results into...
+	resultv = reflect.ValueOf(result)
+	if resultv.Kind() == reflect.Ptr {
+		slicev = resultv.Elem()
+
+		if slicev.Kind() == reflect.Slice {
+			elementt = slicev.Type().Elem()
+			if elementt.Kind() == reflect.Ptr {
+				typeOK = true
+			}
+		}
+	}
+	if !typeOK {
+		panic("result must be pointer to a slice of pointers")
+	}
+
+	ids := q.perform(coll)
+
+	outv := reflect.MakeSlice(reflect.SliceOf(elementt), len(ids), len(ids))
+	idx := 0
+	for id, _ := range ids {
+		doc := coll.docs[id]
+		docv := reflect.ValueOf(doc)
+		outv.Index(idx).Set(docv)
+		idx++
+	}
+	resultv.Elem().Set(outv)
 }

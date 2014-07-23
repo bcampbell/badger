@@ -2,7 +2,7 @@ package crummy
 
 import (
 	"bytes"
-	"fmt"
+	//	"fmt"
 	"testing"
 )
 
@@ -34,6 +34,19 @@ func dummyCollection() *Collection {
 	return coll
 }
 
+func TestFind(t *testing.T) {
+	coll := dummyCollection()
+
+	var out []*TestDoc
+
+	q := NewContainsQuery("Colour", "e")
+	coll.Find(q, &out)
+
+	if len(out) != 3 {
+		t.Error("Count error")
+	}
+}
+
 func TestSimple(t *testing.T) {
 
 	coll := dummyCollection()
@@ -41,11 +54,11 @@ func TestSimple(t *testing.T) {
 		t.Error("Count error")
 	}
 
-	greens := coll.FindExact("Colour", "green")
+	greens := coll.findExact("Colour", "green")
 	//	fmt.Println(greens)
-	reds := coll.FindExact("Colour", "crimson")
-	reds = Union(reds, coll.FindExact("Colour", "pink"))
-	reds = Union(reds, coll.FindExact("Colour", "red"))
+	reds := coll.findExact("Colour", "crimson")
+	reds = Union(reds, coll.findExact("Colour", "pink"))
+	reds = Union(reds, coll.findExact("Colour", "red"))
 
 	//	fmt.Println(reds)
 	if len(greens) != 1 {
@@ -56,14 +69,14 @@ func TestSimple(t *testing.T) {
 	}
 
 	//
-	if len(coll.FindExact("Tags", "reddish")) != 3 {
+	if len(coll.findExact("Tags", "reddish")) != 3 {
 		t.Error("wrong number tagged reddish")
 	}
-	if len(coll.FindExact("Tags", "uber")) != 0 {
+	if len(coll.findExact("Tags", "uber")) != 0 {
 		t.Error("wrong number tagged uber")
 	}
 
-	if len(coll.FindContains("Tags", "reddish")) != 3 {
+	if len(coll.findContains("Tags", "reddish")) != 3 {
 		t.Error("wrong number tagged reddish")
 	}
 }
@@ -88,12 +101,12 @@ func TestReadWrite(t *testing.T) {
 
 	}
 	// make sure result is kind of sane
-	greens := coll2.FindExact("Colour", "green")
+	greens := coll2.findExact("Colour", "green")
 	if len(greens) != 1 {
 		t.Error("Wrong number of greens")
 	}
 	/*
-		for id, _ := range coll.FindAll() {
+		for id, _ := range coll.findAll() {
 			a := coll.Get(id).(*TestDoc)
 
 			b := coll2.Get(id).(*TestDoc)
