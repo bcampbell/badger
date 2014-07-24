@@ -1,4 +1,4 @@
-package crummy
+package badger
 
 type docSet map[string]struct{}
 

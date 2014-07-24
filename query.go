@@ -1,4 +1,4 @@
-package crummy
+package badger
 
 import (
 	"strings"

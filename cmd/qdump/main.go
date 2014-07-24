@@ -6,7 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"semprini/crummy/query"
+	"semprini/badger/query"
 )
 
 func main() {

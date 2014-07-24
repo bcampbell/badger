@@ -1,7 +1,7 @@
 package query
 
 import (
-	"fmt"
+	//	"fmt"
 	"testing"
 )
 
@@ -28,14 +28,14 @@ func TestBasic(t *testing.T) {
 	}
 
 	for _, qs := range testQueries {
-		q, err := Parse(qs, "title")
+		_, err := Parse(qs, "title")
 		if err != nil {
 			t.Errorf(`Parse(%s) failed: %s`, qs, err)
 			continue
 		}
 
-		fmt.Println(qs)
-		fmt.Println(DumpTree(q, 0))
+		//		fmt.Println(qs)
+		//		fmt.Println(DumpTree(q, 0))
 
 	}
 }

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	//"labix.org/v2/mgo"
 	//"regexp"
-	"semprini/crummy"
+	"semprini/badger"
 	"time"
 )
 
@@ -31,7 +31,7 @@ doublequotedstring ::= /"(.*?)"/
 
 */
 
-func Parse(q string, defaultField string) (*crummy.Query, error) {
+func Parse(q string, defaultField string) (*badger.Query, error) {
 	lex := lex(q)
 	var tokens []token
 	for tok := range lex.tokens {
@@ -66,7 +66,7 @@ func (p *parser) next() token {
 // starting point
 // BNF:
 //     query ::= expr | expr query
-func (p *parser) parseExpr(defaultField string) (*crummy.Query, error) {
+func (p *parser) parseExpr(defaultField string) (*badger.Query, error) {
 	if p.peek().typ == tokEOF {
 		return nil, nil
 	}
@@ -78,23 +78,23 @@ func (p *parser) parseExpr(defaultField string) (*crummy.Query, error) {
 		field = defaultField
 	}
 
-	var q *crummy.Query
+	var q *badger.Query
 	var err error
 	tok := p.next()
 	switch tok.typ {
 
 	case tokLit:
-		q = crummy.NewContainsQuery(field, tok.val)
+		q = badger.NewContainsQuery(field, tok.val)
 	case tokQuoted:
 		txt := string(tok.val[1 : len(tok.val)-1])
-		q = crummy.NewContainsQuery(field, txt)
+		q = badger.NewContainsQuery(field, txt)
 	case tokLSq:
 		p.backup()
 		start, end, err := p.parseRange()
 		if err != nil {
 			return nil, err
 		}
-		q = crummy.NewRangeQuery(field, start, end)
+		q = badger.NewRangeQuery(field, start, end)
 	case tokLParen:
 		q, err = p.parseExpr(field)
 		if err != nil {
@@ -124,7 +124,7 @@ func (p *parser) parseExpr(defaultField string) (*crummy.Query, error) {
 		if err != nil {
 			return nil, err
 		}
-		return crummy.NewORQuery(q, qr), nil
+		return badger.NewORQuery(q, qr), nil
 	}
 
 	if tok.typ != tokAnd {
@@ -134,7 +134,7 @@ func (p *parser) parseExpr(defaultField string) (*crummy.Query, error) {
 	if err != nil {
 		return nil, err
 	}
-	return crummy.NewANDQuery(q, qr), nil
+	return badger.NewANDQuery(q, qr), nil
 }
 
 // parse (optional) boolean modifier
