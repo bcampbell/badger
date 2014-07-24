@@ -113,5 +113,19 @@ func TestReadWrite(t *testing.T) {
 			fmt.Printf("%v %v\n", a, b)
 		}
 	*/
+}
 
+func TestUpdate(t *testing.T) {
+	coll := dummyCollection()
+	visited := 0
+	coll.Update(NewAllQuery(), func(a interface{}) bool {
+		_ = a.(*TestDoc)
+		visited++
+		//fmt.Printf("%v\n", doc)
+		return false
+	})
+
+	if visited != coll.Count() {
+		t.Error("Wrong number visited")
+	}
 }

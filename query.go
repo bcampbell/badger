@@ -23,7 +23,7 @@ type Query struct {
 	left, right *Query
 }
 
-func NewAllQuery(field, value string) *Query {
+func NewAllQuery() *Query {
 	return &Query{op: All}
 }
 

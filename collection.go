@@ -10,6 +10,7 @@ import (
 
 var version string = "1"
 
+// Collection holds a set of documents, all of the same type.
 // Caveats:
 // - have to store ptrs to structs
 // - can only query on string and []string fields (but can store anything)
@@ -19,10 +20,14 @@ type Collection struct {
 	docType reflect.Type
 }
 
-func NewCollection(exampleDoc interface{}) *Collection {
+// NewCollection initialises a collection for holding documents of
+// same type as referenceDoc.
+// The contents of referenceDoc are unimportant - a zero object is
+// fine. Only it's type is used.
+func NewCollection(referenceDoc interface{}) *Collection {
 	coll := &Collection{
 		docs:    make(map[string]interface{}),
-		docType: reflect.TypeOf(exampleDoc),
+		docType: reflect.TypeOf(referenceDoc),
 	}
 
 	return coll
@@ -173,6 +178,8 @@ func (coll *Collection) Write(out io.Writer) error {
 	return nil
 }
 
+// Find executes a query and fills out a slice containing the results.
+// result must be a pointer to a slice
 // eg
 // var out []*Document
 // coll.Find(q, &out)
@@ -207,4 +214,13 @@ func (coll *Collection) Find(q *Query, result interface{}) {
 		idx++
 	}
 	resultv.Elem().Set(outv)
+}
+
+//
+func (coll *Collection) Update(q *Query, modifyFn func(interface{}) bool) {
+	ids := q.perform(coll)
+	for id, _ := range ids {
+		doc := coll.docs[id]
+		_ = modifyFn(doc)
+	}
 }
