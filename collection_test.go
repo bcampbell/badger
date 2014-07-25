@@ -89,11 +89,13 @@ func TestReadWrite(t *testing.T) {
 	err := coll.Write(&buf)
 	if err != nil {
 		t.Error("write failed")
+		return
 	}
 
 	coll2, err := Read(&buf, TestDoc{})
 	if err != nil {
-		t.Error("read failed")
+		t.Errorf("read failed (%s)", err)
+		return
 	}
 
 	if coll.Count() != coll2.Count() {

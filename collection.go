@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-var version string = "1"
+var magicCookie = []byte{'b', 'a', 'd', '1'}
 
 // Collection holds a set of documents, all of the same type.
 // Caveats:
@@ -131,20 +131,23 @@ func (coll *Collection) findContains(field, val string) docSet {
 	})
 }
 
-func Read(in io.Reader, exampleDoc interface{}) (*Collection, error) {
-	dec := gob.NewDecoder(in)
-
-	coll := NewCollection(exampleDoc)
-	var ver string
+func Read(in io.Reader, referenceDoc interface{}) (*Collection, error) {
 	var err error
-	err = dec.Decode(&ver)
+
+	cookie := []byte{0, 0, 0, 0}
+	_, err = io.ReadFull(in, cookie)
 	if err != nil {
 		return nil, err
 	}
-
-	if ver != version {
-		return nil, fmt.Errorf("invalid version")
+	for i := 0; i < len(magicCookie); i++ {
+		if cookie[i] != magicCookie[i] {
+			return nil, fmt.Errorf("unrecognised file format")
+		}
 	}
+
+	dec := gob.NewDecoder(in)
+
+	coll := NewCollection(referenceDoc)
 
 	var count int
 	err = dec.Decode(&count)
@@ -173,12 +176,14 @@ func Read(in io.Reader, exampleDoc interface{}) (*Collection, error) {
 
 func (coll *Collection) Write(out io.Writer) error {
 	var err error
-	enc := gob.NewEncoder(out)
 
-	err = enc.Encode(version)
+	_, err = out.Write(magicCookie)
 	if err != nil {
 		return err
 	}
+
+	enc := gob.NewEncoder(out)
+
 	err = enc.Encode(len(coll.docs))
 	if err != nil {
 		return err
