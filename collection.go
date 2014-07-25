@@ -55,11 +55,14 @@ func (coll *Collection) findAll() docSet {
 }
 
 func (coll *Collection) find(field string, cmp func(string) bool) docSet {
-
 	// resolve the field
-	sf, ok := coll.docType.FieldByName(field)
+	field = strings.ToLower(field)
+
+	sf, ok := coll.docType.FieldByNameFunc(func(name string) bool {
+		return strings.ToLower(name) == field
+	})
 	if !ok {
-		panic("couldn't resolve " + field)
+		panic("couldn't resolve field " + field)
 	}
 
 	matching := docSet{}
@@ -96,19 +99,25 @@ func (coll *Collection) find(field string, cmp func(string) bool) docSet {
 
 func (coll *Collection) findRange(field, start, end string) docSet {
 
+	start = strings.ToLower(start)
+	end = strings.ToLower(end)
 	return coll.find(field, func(foo string) bool {
+		foo = strings.ToLower(foo)
 		return foo >= start && foo <= end
 	})
 }
 func (coll *Collection) findExact(field, val string) docSet {
-
+	val = strings.ToLower(val)
 	return coll.find(field, func(foo string) bool {
+		foo = strings.ToLower(foo)
 		return foo == val
 	})
 }
 
 func (coll *Collection) findContains(field, val string) docSet {
+	val = strings.ToLower(val)
 	return coll.find(field, func(foo string) bool {
+		foo = strings.ToLower(foo)
 		return strings.Contains(foo, val)
 	})
 }
