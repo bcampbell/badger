@@ -5,7 +5,8 @@ import (
 	//"labix.org/v2/mgo"
 	//"regexp"
 	"github.com/bcampbell/badger"
-	"time"
+	"strings"
+	//	"time"
 )
 
 type parser struct {
@@ -31,14 +32,14 @@ doublequotedstring ::= /"(.*?)"/
 
 */
 
-func Parse(q string, defaultField string) (*badger.Query, error) {
+func Parse(q string, validFields []string, defaultField string) (*badger.Query, error) {
 	lex := lex(q)
 	var tokens []token
 	for tok := range lex.tokens {
 		tokens = append(tokens, tok)
 	}
 	p := parser{tokens: tokens}
-	return p.parseExpr(defaultField)
+	return p.parseExpr(defaultField, validFields)
 }
 
 func (p *parser) peek() token {
@@ -66,7 +67,7 @@ func (p *parser) next() token {
 // starting point
 // BNF:
 //     query ::= expr | expr query
-func (p *parser) parseExpr(defaultField string) (*badger.Query, error) {
+func (p *parser) parseExpr(defaultField string, validFields []string) (*badger.Query, error) {
 	if p.peek().typ == tokEOF {
 		return nil, nil
 	}
@@ -76,6 +77,19 @@ func (p *parser) parseExpr(defaultField string) (*badger.Query, error) {
 	field := p.parseField()
 	if field == "" {
 		field = defaultField
+	}
+
+	// check against valid fields
+	field = strings.ToLower(field)
+	validField := false
+	for _, f := range validFields {
+		if strings.ToLower(f) == field {
+			validField = true
+			break
+		}
+	}
+	if !validField {
+		return nil, fmt.Errorf("unknown field '%s'", field)
 	}
 
 	var q *badger.Query
@@ -96,7 +110,7 @@ func (p *parser) parseExpr(defaultField string) (*badger.Query, error) {
 		}
 		q = badger.NewRangeQuery(field, start, end)
 	case tokLParen:
-		q, err = p.parseExpr(field)
+		q, err = p.parseExpr(field, validFields)
 		if err != nil {
 			return nil, err
 		}
@@ -120,7 +134,7 @@ func (p *parser) parseExpr(defaultField string) (*badger.Query, error) {
 	}
 
 	if tok.typ == tokOr {
-		qr, err := p.parseExpr(field)
+		qr, err := p.parseExpr(field, validFields)
 		if err != nil {
 			return nil, err
 		}
@@ -130,7 +144,7 @@ func (p *parser) parseExpr(defaultField string) (*badger.Query, error) {
 	if tok.typ != tokAnd {
 		p.backup() // AND is optional :-)
 	}
-	qr, err := p.parseExpr(field)
+	qr, err := p.parseExpr(field, validFields)
 	if err != nil {
 		return nil, err
 	}
@@ -171,6 +185,7 @@ func (p *parser) parseField() string {
 }
 
 // expects "YYYY-MM-DD" form
+/*
 func (p *parser) parseDate() (time.Time, error) {
 	tok := p.next()
 	if tok.typ != tokLit {
@@ -182,6 +197,7 @@ func (p *parser) parseDate() (time.Time, error) {
 	}
 	return t, nil
 }
+*/
 
 // BNF:
 //     range ::= "[" [start] "TO" [end] "]"

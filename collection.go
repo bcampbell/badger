@@ -16,8 +16,9 @@ var version string = "1"
 // - can only query on string and []string fields (but can store anything)
 //
 type Collection struct {
-	docs    map[string]interface{}
-	docType reflect.Type
+	docs         map[string]interface{}
+	docType      reflect.Type
+	DefaultField string // field to search by default (mainly for the benefit of the query parser)
 }
 
 // NewCollection initialises a collection for holding documents of
@@ -37,11 +38,19 @@ func (coll *Collection) Count() int {
 	return len(coll.docs)
 }
 
+// ValidField returns true if field is a valid one (case insenstive)
+func (coll *Collection) ValidFields() []string {
+	fields := []string{}
+	for i := 0; i < coll.docType.NumField(); i++ {
+		fields = append(fields, coll.docType.Field(i).Name)
+	}
+	return fields
+}
+
 func (coll *Collection) Put(id string, doc interface{}) {
 	coll.docs[id] = doc
 }
 
-// TODO: temporary - come up with something more elegant
 func (coll *Collection) Get(id string) interface{} {
 	return coll.docs[id]
 }

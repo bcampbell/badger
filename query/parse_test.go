@@ -28,7 +28,7 @@ func TestBasic(t *testing.T) {
 	}
 
 	for _, qs := range testQueries {
-		_, err := Parse(qs, "title")
+		_, err := Parse(qs, []string{"tags", "urls", "published", "publication.domain", "site", "headline"}, "headline")
 		if err != nil {
 			t.Errorf(`Parse(%s) failed: %s`, qs, err)
 			continue
