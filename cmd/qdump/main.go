@@ -5,8 +5,9 @@ package main
 import (
 	"flag"
 	"fmt"
+	"github.com/bcampbell/badger"
+	"github.com/bcampbell/badger/query"
 	"os"
-	"semprini/badger/query"
 )
 
 func main() {
@@ -20,5 +21,5 @@ func main() {
 		fmt.Fprintf(os.Stderr, "ERROR: %s\n", err)
 		os.Exit(1)
 	}
-	fmt.Println(query.DumpTree(q, 0))
+	fmt.Println(badger.DumpTree(q, 0))
 }

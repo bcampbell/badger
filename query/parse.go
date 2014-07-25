@@ -4,7 +4,7 @@ import (
 	"fmt"
 	//"labix.org/v2/mgo"
 	//"regexp"
-	"semprini/badger"
+	"github.com/bcampbell/badger"
 	"time"
 )
 
