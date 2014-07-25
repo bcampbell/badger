@@ -217,10 +217,13 @@ func (coll *Collection) Find(q *Query, result interface{}) {
 }
 
 //
-func (coll *Collection) Update(q *Query, modifyFn func(interface{}) bool) {
+func (coll *Collection) Update(q *Query, modifyFn func(interface{})) int {
 	ids := q.perform(coll)
+	cnt := 0
 	for id, _ := range ids {
 		doc := coll.docs[id]
-		_ = modifyFn(doc)
+		modifyFn(doc)
+		cnt++
 	}
+	return cnt
 }

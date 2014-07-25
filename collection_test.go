@@ -117,12 +117,9 @@ func TestReadWrite(t *testing.T) {
 
 func TestUpdate(t *testing.T) {
 	coll := dummyCollection()
-	visited := 0
-	coll.Update(NewAllQuery(), func(a interface{}) bool {
+	visited := coll.Update(NewAllQuery(), func(a interface{}) {
 		_ = a.(*TestDoc)
-		visited++
 		//fmt.Printf("%v\n", doc)
-		return false
 	})
 
 	if visited != coll.Count() {
