@@ -38,11 +38,29 @@ func (coll *Collection) Count() int {
 	return len(coll.docs)
 }
 
-// ValidField returns true if field is a valid one (case insenstive)
+// ValidField returns a list of valid field names
 func (coll *Collection) ValidFields() []string {
+	return validFields(coll.docType)
+}
+
+// TODO: update to:
+// 1) handler pointer members
+// 2) filter out unwanted members (eg functions)
+func validFields(typ reflect.Type) []string {
 	fields := []string{}
-	for i := 0; i < coll.docType.NumField(); i++ {
-		fields = append(fields, coll.docType.Field(i).Name)
+	for i := 0; i < typ.NumField(); i++ {
+		sf := typ.Field(i)
+		if sf.Type.Kind() == reflect.Struct {
+			childFields := validFields(sf.Type)
+			if !sf.Anonymous {
+				for j, _ := range childFields {
+					childFields[j] = sf.Name + "." + childFields[j]
+				}
+			}
+			fields = append(fields, childFields...)
+		} else {
+			fields = append(fields, sf.Name)
+		}
 	}
 	return fields
 }

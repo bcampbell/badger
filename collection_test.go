@@ -2,7 +2,7 @@ package badger
 
 import (
 	"bytes"
-	//	"fmt"
+	"fmt"
 	"testing"
 )
 
@@ -127,4 +127,19 @@ func TestUpdate(t *testing.T) {
 	if visited != coll.Count() {
 		t.Error("Wrong number visited")
 	}
+}
+
+func ExampleTestValidFields() {
+
+	// test struct with anonymous embedded struct
+	type ExtendedDoc struct {
+		TestDoc
+		Extra string
+	}
+
+	coll := NewCollection(ExtendedDoc{})
+	fields := coll.ValidFields()
+	fmt.Printf("%v\n", fields)
+	// Output:
+	// [ID Colour Tags Details.Name Details.ShoeSize Extra]
 }
