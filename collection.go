@@ -4,8 +4,11 @@ import (
 	"encoding/gob"
 	"fmt"
 	"io"
+	"os"
 	"reflect"
 	"strings"
+	"sync"
+	"time"
 )
 
 var magicCookie = []byte{'b', 'a', 'd', '1'}
@@ -16,9 +19,12 @@ var magicCookie = []byte{'b', 'a', 'd', '1'}
 // - can only query on string and []string fields (but can store anything)
 //
 type Collection struct {
+	sync.RWMutex
 	docs         map[string]interface{}
 	docType      reflect.Type
 	DefaultField string // field to search by default (mainly for the benefit of the query parser)
+	filename     string // filename for saving
+	dirty        bool
 }
 
 // NewCollection initialises a collection for holding documents of
@@ -34,12 +40,56 @@ func NewCollection(referenceDoc interface{}) *Collection {
 	return coll
 }
 
+func (coll *Collection) EnableAutosave(filename string) {
+	// TODO: use a channel to receive an exit signal. Add a Close() method to Collection to send it.
+	coll.filename = filename
+	if coll.filename == "" {
+		panic("no filename")
+	}
+	go func() {
+		var interval time.Duration = 5 * time.Second
+		for {
+			time.Sleep(interval)
+			if coll.dirty {
+				fmt.Fprintf(os.Stderr, "Autosaving...\n")
+				err := coll.Save(coll.filename)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "Autosave failed: %s\n", err)
+					interval *= 2 // back off
+				} else {
+					fmt.Fprintf(os.Stderr, "Autosave OK\n")
+					interval = 5 * time.Second
+				}
+			}
+		}
+	}()
+}
+
+func (coll *Collection) Save(filename string) error {
+	tmpFilename := filename + ".new"
+	outFile, err := os.Create(tmpFilename)
+	if err != nil {
+		return err
+	}
+	coll.Write(outFile)
+	outFile.Close()
+	err = os.Rename(tmpFilename, filename)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 func (coll *Collection) Count() int {
+	coll.RLock()
+	defer coll.RUnlock()
 	return len(coll.docs)
 }
 
 // ValidField returns a list of valid field names
 func (coll *Collection) ValidFields() []string {
+	coll.RLock()
+	defer coll.RUnlock()
 	return validFields(coll.docType)
 }
 
@@ -66,10 +116,15 @@ func validFields(typ reflect.Type) []string {
 }
 
 func (coll *Collection) Put(id string, doc interface{}) {
+	coll.Lock()
+	defer coll.Unlock()
 	coll.docs[id] = doc
+	coll.dirty = true
 }
 
 func (coll *Collection) Get(id string) interface{} {
+	coll.RLock()
+	defer coll.RUnlock()
 	return coll.docs[id]
 }
 
@@ -166,6 +221,8 @@ func Read(in io.Reader, referenceDoc interface{}) (*Collection, error) {
 	dec := gob.NewDecoder(in)
 
 	coll := NewCollection(referenceDoc)
+	coll.Lock()
+	defer coll.Unlock()
 
 	var count int
 	err = dec.Decode(&count)
@@ -186,7 +243,7 @@ func Read(in io.Reader, referenceDoc interface{}) (*Collection, error) {
 		if err != nil {
 			return nil, err
 		}
-		coll.Put(key, doc.Interface())
+		coll.docs[key] = doc.Interface()
 	}
 
 	return coll, err
@@ -195,6 +252,8 @@ func Read(in io.Reader, referenceDoc interface{}) (*Collection, error) {
 func (coll *Collection) Write(out io.Writer) error {
 	var err error
 
+	coll.RLock()
+	defer coll.RUnlock()
 	_, err = out.Write(magicCookie)
 	if err != nil {
 		return err
@@ -216,6 +275,7 @@ func (coll *Collection) Write(out io.Writer) error {
 			return err
 		}
 	}
+	coll.dirty = false
 	return nil
 }
 
@@ -225,6 +285,8 @@ func (coll *Collection) Write(out io.Writer) error {
 // var out []*Document
 // coll.Find(q, &out)
 func (coll *Collection) Find(q *Query, result interface{}) {
+	coll.RLock()
+	defer coll.RUnlock()
 	var resultv, slicev reflect.Value
 	var elementt reflect.Type
 	var typeOK = false
@@ -259,6 +321,8 @@ func (coll *Collection) Find(q *Query, result interface{}) {
 
 //
 func (coll *Collection) Update(q *Query, modifyFn func(interface{})) int {
+	coll.Lock()
+	defer coll.Unlock()
 	ids := q.perform(coll)
 	cnt := 0
 	for id, _ := range ids {
@@ -266,5 +330,6 @@ func (coll *Collection) Update(q *Query, modifyFn func(interface{})) int {
 		modifyFn(doc)
 		cnt++
 	}
+	coll.dirty = true
 	return cnt
 }
