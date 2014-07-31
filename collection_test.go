@@ -19,7 +19,7 @@ type TestDoc struct {
 }
 
 func dummyCollection() *Collection {
-	coll := NewCollection(TestDoc{})
+	coll := NewCollection(&TestDoc{})
 
 	testData := []*TestDoc{
 		&TestDoc{"1", "red", []string{"primary", "reddish"}, SubDoc{}},
@@ -29,7 +29,7 @@ func dummyCollection() *Collection {
 		&TestDoc{"five", "crimson", []string{"reddish"}, SubDoc{}},
 	}
 	for _, dat := range testData {
-		coll.Put(dat.ID, dat)
+		coll.Put(dat)
 	}
 	return coll
 }
@@ -92,7 +92,7 @@ func TestReadWrite(t *testing.T) {
 		return
 	}
 
-	coll2, err := Read(&buf, TestDoc{})
+	coll2, err := Read(&buf, &TestDoc{})
 	if err != nil {
 		t.Errorf("read failed (%s)", err)
 		return
@@ -137,7 +137,7 @@ func ExampleTestValidFields() {
 		Extra string
 	}
 
-	coll := NewCollection(ExtendedDoc{})
+	coll := NewCollection(&ExtendedDoc{})
 	fields := coll.ValidFields()
 	fmt.Printf("%v\n", fields)
 	// Output:

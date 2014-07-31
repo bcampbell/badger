@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-var magicCookie = []byte{'b', 'a', 'd', '1'}
+var magicCookie = []byte{'b', 'a', 'd', '2'}
 
 // Collection holds a set of documents, all of the same type.
 // Caveats:
@@ -20,7 +20,7 @@ var magicCookie = []byte{'b', 'a', 'd', '1'}
 //
 type Collection struct {
 	sync.RWMutex
-	docs         map[string]interface{}
+	docs         map[uintptr]interface{}
 	docType      reflect.Type
 	DefaultField string // field to search by default (mainly for the benefit of the query parser)
 	filename     string // filename for saving
@@ -33,8 +33,15 @@ type Collection struct {
 // fine. Only it's type is used.
 func NewCollection(referenceDoc interface{}) *Collection {
 	coll := &Collection{
-		docs:    make(map[string]interface{}),
+		docs:    make(map[uintptr]interface{}),
 		docType: reflect.TypeOf(referenceDoc),
+	}
+
+	if coll.docType.Kind() != reflect.Ptr {
+		panic("doctype must be ptr")
+	}
+	if coll.docType.Elem().Kind() != reflect.Struct {
+		panic("doctype must be ptr to struct")
 	}
 
 	return coll
@@ -90,7 +97,7 @@ func (coll *Collection) Count() int {
 func (coll *Collection) ValidFields() []string {
 	coll.RLock()
 	defer coll.RUnlock()
-	return validFields(coll.docType)
+	return validFields(coll.docType.Elem())
 }
 
 // TODO: update to:
@@ -115,18 +122,27 @@ func validFields(typ reflect.Type) []string {
 	return fields
 }
 
-func (coll *Collection) Put(id string, doc interface{}) {
+func (coll *Collection) Put(doc interface{}) {
+	t := reflect.TypeOf(doc)
+	if t != coll.docType {
+		panic(fmt.Sprintf("doc type mismatch (got %s, expecting %s)", t, coll.docType))
+	}
+	key := reflect.ValueOf(doc).Pointer()
+
 	coll.Lock()
 	defer coll.Unlock()
-	coll.docs[id] = doc
+
+	coll.docs[key] = doc
 	coll.dirty = true
 }
 
+/*
 func (coll *Collection) Get(id string) interface{} {
 	coll.RLock()
 	defer coll.RUnlock()
 	return coll.docs[id]
 }
+*/
 
 func (coll *Collection) findAll() docSet {
 	matching := docSet{}
@@ -140,7 +156,7 @@ func (coll *Collection) find(field string, cmp func(string) bool) docSet {
 	// resolve the field
 	field = strings.ToLower(field)
 
-	sf, ok := coll.docType.FieldByNameFunc(func(name string) bool {
+	sf, ok := coll.docType.Elem().FieldByNameFunc(func(name string) bool {
 		return strings.ToLower(name) == field
 	})
 	if !ok {
@@ -233,16 +249,12 @@ func Read(in io.Reader, referenceDoc interface{}) (*Collection, error) {
 	//inType := reflect.PtrTo(coll.docType)
 
 	for i := 0; i < count; i++ {
-		var key string
-		doc := reflect.New(coll.docType)
-		err = dec.Decode(&key)
-		if err != nil {
-			return nil, err
-		}
+		doc := reflect.New(coll.docType.Elem())
 		err = dec.Decode(doc.Interface())
 		if err != nil {
 			return nil, err
 		}
+		key := doc.Pointer()
 		coll.docs[key] = doc.Interface()
 	}
 
@@ -265,11 +277,7 @@ func (coll *Collection) Write(out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	for key, doc := range coll.docs {
-		err = enc.Encode(key)
-		if err != nil {
-			return err
-		}
+	for _, doc := range coll.docs {
 		err = enc.Encode(doc)
 		if err != nil {
 			return err
