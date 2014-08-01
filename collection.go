@@ -195,31 +195,6 @@ func (coll *Collection) find(field string, cmp func(string) bool) docSet {
 	return matching
 }
 
-func (coll *Collection) findRange(field, start, end string) docSet {
-
-	start = strings.ToLower(start)
-	end = strings.ToLower(end)
-	return coll.find(field, func(foo string) bool {
-		foo = strings.ToLower(foo)
-		return foo >= start && foo <= end
-	})
-}
-func (coll *Collection) findExact(field, val string) docSet {
-	val = strings.ToLower(val)
-	return coll.find(field, func(foo string) bool {
-		foo = strings.ToLower(foo)
-		return foo == val
-	})
-}
-
-func (coll *Collection) findContains(field, val string) docSet {
-	val = strings.ToLower(val)
-	return coll.find(field, func(foo string) bool {
-		foo = strings.ToLower(foo)
-		return strings.Contains(foo, val)
-	})
-}
-
 func Read(in io.Reader, referenceDoc interface{}) (*Collection, error) {
 	var err error
 
@@ -292,7 +267,7 @@ func (coll *Collection) Write(out io.Writer) error {
 // eg
 // var out []*Document
 // coll.Find(q, &out)
-func (coll *Collection) Find(q *Query, result interface{}) {
+func (coll *Collection) Find(q Query, result interface{}) {
 	coll.RLock()
 	defer coll.RUnlock()
 	var resultv, slicev reflect.Value
@@ -328,7 +303,7 @@ func (coll *Collection) Find(q *Query, result interface{}) {
 }
 
 //
-func (coll *Collection) Update(q *Query, modifyFn func(interface{})) int {
+func (coll *Collection) Update(q Query, modifyFn func(interface{})) int {
 	coll.Lock()
 	defer coll.Unlock()
 	ids := q.perform(coll)

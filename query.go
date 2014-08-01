@@ -11,101 +11,143 @@ const (
 	Exact
 	Contains
 	Range
+	ExactIn
 	OR
 	AND
 	Diff
 )
 
-type Query struct {
-	op          queryKind
-	field       string
-	val, val2   string
-	left, right *Query
+type Query interface {
+	perform(coll *Collection) docSet
+	String() string
 }
 
-func NewAllQuery() *Query {
-	return &Query{op: All}
+type allQuery struct {
 }
 
-func NewExactQuery(field, value string) *Query {
-	return &Query{op: Exact, field: field, val: strings.ToLower(value)}
+// NewAllQuery returns a query which matches all docs
+func NewAllQuery() Query {
+	return &allQuery{}
 }
 
-func NewContainsQuery(field, value string) *Query {
-	return &Query{op: Contains, field: field, val: strings.ToLower(value)}
+func (q *allQuery) String() string {
+	return "<ALL>"
 }
 
-func NewORQuery(left, right *Query) *Query {
-	return &Query{op: OR, left: left, right: right}
+func (q *allQuery) perform(coll *Collection) docSet {
+	return coll.findAll()
 }
 
-func NewANDQuery(left, right *Query) *Query {
-	return &Query{op: AND, left: left, right: right}
+//
+type exactQuery struct {
+	field  string
+	values []string
 }
 
-func NewRangeQuery(field, start, end string) *Query {
-	return &Query{op: Range, field: field, val: start, val2: end}
+// NewExactQuery returns a query to match a field exactly
+func NewExactQuery(field, value string) Query {
+	return &exactQuery{field: field, values: []string{strings.ToLower(value)}}
 }
 
-func (q *Query) String() string {
-	switch q.op {
-	case All:
-		return "<all>"
-	case Exact:
-		return "<exact " + q.field + ":" + q.val + ">"
-	case Contains:
-		return "<contains " + q.field + ":" + q.val + ">"
-	case OR:
-		return "<OR>"
-	case AND:
-		return "<AND>"
-	case Diff:
-		return "<diff>"
-	case Range:
-		return "<range [" + q.val + " TO " + q.val2 + "]>"
-	}
-	return ""
+func (q *exactQuery) String() string {
+	// TODO
+	return q.field + ":blahblah"
 }
 
-func DumpTree(q *Query, indent int) string {
-	out := ""
-	if q == nil {
-		return "<empty>\n"
-	}
-	for i := 0; i < indent; i++ {
-		out += "  "
-	}
-	out += q.String() + "\n"
-	if q.left != nil {
-		out += DumpTree(q.left, indent+1)
-	}
-	if q.right != nil {
-		out += DumpTree(q.right, indent+1)
-	}
-	return out
+func (q *exactQuery) perform(coll *Collection) docSet {
+	return coll.find(q.field, func(foo string) bool {
+		foo = strings.ToLower(foo)
+		for _, v := range q.values {
+			if foo == v {
+				return true
+			}
+		}
+		return false
+	})
 }
 
-func (q *Query) perform(coll *Collection) docSet {
-	switch q.op {
-	case All:
-		return coll.findAll()
-	case Exact:
-		return coll.findExact(q.field, q.val)
-	case Contains:
-		return coll.findContains(q.field, q.val)
-	case Range:
-		return coll.findRange(q.field, q.val, q.val2)
-	case AND:
-		a := q.left.perform(coll)
-		b := q.right.perform(coll)
-		return Intersect(a, b)
-	case OR:
-		a := q.left.perform(coll)
-		b := q.right.perform(coll)
-		return Union(a, b)
-	case Diff:
-		panic("not implemented yet")
-	default:
-		panic("not implemented yet")
-	}
+type containsQuery struct {
+	field  string
+	values []string
+}
+
+// NewContainsQuery finds docs with field containing the value
+func NewContainsQuery(field, value string) Query {
+	return &containsQuery{field: field, values: []string{strings.ToLower(value)}}
+}
+
+func (q *containsQuery) String() string {
+	// TODO
+	return q.field + ":blahblah"
+}
+func (q *containsQuery) perform(coll *Collection) docSet {
+	return coll.find(q.field, func(foo string) bool {
+		for _, v := range q.values {
+			foo = strings.ToLower(foo)
+			if strings.Contains(foo, v) {
+				return true
+			}
+		}
+
+		return false
+	})
+}
+
+type orQuery struct {
+	left, right Query
+}
+
+// NewORQuery returns a boolean OR of two subqueries
+func NewORQuery(left, right Query) Query {
+	return &orQuery{left: left, right: right}
+}
+func (q *orQuery) String() string {
+	return "(" + q.left.String() + "OR" + q.right.String() + ")"
+}
+
+func (q *orQuery) perform(coll *Collection) docSet {
+	a := q.left.perform(coll)
+	b := q.right.perform(coll)
+	return Union(a, b)
+}
+
+type andQuery struct {
+	left, right Query
+}
+
+// NewANDQuery returns a boolean AND of two subqueries
+func NewANDQuery(left, right Query) Query {
+	return &andQuery{left: left, right: right}
+}
+
+func (q *andQuery) String() string {
+	return "(" + q.left.String() + "AND" + q.right.String() + ")"
+}
+
+func (q *andQuery) perform(coll *Collection) docSet {
+	a := q.left.perform(coll)
+	b := q.right.perform(coll)
+	return Intersect(a, b)
+}
+
+type rangeQuery struct {
+	field, first, last string
+}
+
+// NewRangeQuery returns a query to match docs with field values within
+// inclusive range [first,last]
+func NewRangeQuery(field, first, last string) Query {
+	return &rangeQuery{field: field, first: strings.ToLower(first), last: strings.ToLower(last)}
+}
+
+func (q *rangeQuery) String() string {
+	return q.field + ": [" + q.first + " TO " + q.last + "]"
+}
+
+func (q *rangeQuery) perform(coll *Collection) docSet {
+	return coll.find(q.field, func(foo string) bool {
+		foo = strings.ToLower(foo)
+		// TODO: handle dates better!
+		return foo >= q.first && foo <= q.last
+	})
 }

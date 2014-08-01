@@ -54,11 +54,11 @@ func TestSimple(t *testing.T) {
 		t.Error("Count error")
 	}
 
-	greens := coll.findExact("Colour", "green")
+	greens := NewExactQuery("Colour", "green").perform(coll)
 	//	fmt.Println(greens)
-	reds := coll.findExact("Colour", "crimson")
-	reds = Union(reds, coll.findExact("Colour", "pink"))
-	reds = Union(reds, coll.findExact("Colour", "red"))
+	reds := NewExactQuery("Colour", "crimson").perform(coll)
+	reds = Union(reds, NewExactQuery("Colour", "pink").perform(coll))
+	reds = Union(reds, NewExactQuery("Colour", "red").perform(coll))
 
 	//	fmt.Println(reds)
 	if len(greens) != 1 {
@@ -69,14 +69,14 @@ func TestSimple(t *testing.T) {
 	}
 
 	//
-	if len(coll.findExact("Tags", "reddish")) != 3 {
+	if len(NewExactQuery("Tags", "reddish").perform(coll)) != 3 {
 		t.Error("wrong number tagged reddish")
 	}
-	if len(coll.findExact("Tags", "uber")) != 0 {
+	if len(NewExactQuery("Tags", "uber").perform(coll)) != 0 {
 		t.Error("wrong number tagged uber")
 	}
 
-	if len(coll.findContains("Tags", "reddish")) != 3 {
+	if len(NewContainsQuery("Tags", "reddish").perform(coll)) != 3 {
 		t.Error("wrong number tagged reddish")
 	}
 }
@@ -103,7 +103,7 @@ func TestReadWrite(t *testing.T) {
 
 	}
 	// make sure result is kind of sane
-	greens := coll2.findExact("Colour", "green")
+	greens := NewExactQuery("Colour", "green").perform(coll)
 	if len(greens) != 1 {
 		t.Error("Wrong number of greens")
 	}
