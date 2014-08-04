@@ -264,6 +264,7 @@ func (coll *Collection) Write(out io.Writer) error {
 
 // Find executes a query and fills out a slice containing the results.
 // result must be a pointer to a slice
+// TODO: why couldn't we just accept a slice instead? It's a reference type after all...
 // eg
 // var out []*Document
 // coll.Find(q, &out)

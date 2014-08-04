@@ -32,9 +32,14 @@ type exactQuery struct {
 	values []string
 }
 
-// NewExactQuery returns a query to match a field exactly
-func NewExactQuery(field, value string) Query {
-	return &exactQuery{field: field, values: []string{strings.ToLower(value)}}
+// NewExactQuery returns a query to match a field exactly (but still case insensitively)
+// If multiple values are given, then a match against _any_ of the values is sufficient for the
+// document to be matched (ie the values can be considered to be separated by ORs rather than ANDs)
+func NewExactQuery(field string, values ...string) Query {
+	for i, _ := range values {
+		values[i] = strings.ToLower(values[i])
+	}
+	return &exactQuery{field: field, values: values}
 }
 
 func (q *exactQuery) String() string {
