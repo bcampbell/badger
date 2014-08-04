@@ -16,8 +16,7 @@ type parser struct {
 
 /*
 BNF syntax for query strings:
-
-expr ::= andOp | orOp | group | range | [boolmod] [field ":"] lit
+expr ::= andOp | orOp | group | range | ["="] lit | field ":" expr | [boolmod] expr
 andOp ::= expr expr | expr "AND" expr
 orOp ::= expr "OR" expr
 notOp ::= "NOT" expr
@@ -32,7 +31,7 @@ doublequotedstring ::= /"(.*?)"/
 
 */
 
-func Parse(q string, validFields []string, defaultField string) (*badger.Query, error) {
+func Parse(q string, validFields []string, defaultField string) (badger.Query, error) {
 	lex := lex(q)
 	var tokens []token
 	for tok := range lex.tokens {
@@ -67,33 +66,23 @@ func (p *parser) next() token {
 // starting point
 // BNF:
 //     query ::= expr | expr query
-func (p *parser) parseExpr(defaultField string, validFields []string) (*badger.Query, error) {
+func (p *parser) parseExpr(defaultField string, validFields []string) (badger.Query, error) {
 	if p.peek().typ == tokEOF {
 		return nil, nil
 	}
 
 	// optional boolean modifier and field
 	//boolMod := p.parseBoolMod()
-	field := p.parseField()
+	field, err := p.parseField(validFields)
+	if err != nil {
+		return nil, err
+	}
+
 	if field == "" {
 		field = defaultField
 	}
 
-	// check against valid fields
-	field = strings.ToLower(field)
-	validField := false
-	for _, f := range validFields {
-		if strings.ToLower(f) == field {
-			validField = true
-			break
-		}
-	}
-	if !validField {
-		return nil, fmt.Errorf("unknown field '%s'", field)
-	}
-
-	var q *badger.Query
-	var err error
+	var q badger.Query
 	tok := p.next()
 	switch tok.typ {
 
@@ -134,7 +123,7 @@ func (p *parser) parseExpr(defaultField string, validFields []string) (*badger.Q
 	}
 
 	if tok.typ == tokOr {
-		qr, err := p.parseExpr(field, validFields)
+		qr, err := p.parseExpr(defaultField, validFields)
 		if err != nil {
 			return nil, err
 		}
@@ -144,7 +133,7 @@ func (p *parser) parseExpr(defaultField string, validFields []string) (*badger.Q
 	if tok.typ != tokAnd {
 		p.backup() // AND is optional :-)
 	}
-	qr, err := p.parseExpr(field, validFields)
+	qr, err := p.parseExpr(defaultField, validFields)
 	if err != nil {
 		return nil, err
 	}
@@ -164,24 +153,31 @@ func (p *parser) parseBoolMod() tokType {
 // parse (optional) field specifier
 // [ lit ":" ]
 // returns field name or nil if not a field
-func (p *parser) parseField() string {
+func (p *parser) parseField(validFields []string) (string, error) {
 	tok := p.next()
 	if tok.typ != tokLit {
 		// not a field
 		p.backup()
-		return ""
+		return "", nil
 	}
-	fieldName := tok.val
+	field := tok.val
 
 	tok = p.next()
 	if tok.typ != tokColon {
 		// oop, not a field after all!
 		p.backup()
 		p.backup()
-		return ""
+		return "", nil
 	}
 
-	return fieldName
+	// check against valid fields
+	field = strings.ToLower(field)
+	for _, f := range validFields {
+		if strings.ToLower(f) == field {
+			return field, nil // it's OK
+		}
+	}
+	return "", fmt.Errorf("unknown field '%s'", field)
 }
 
 // expects "YYYY-MM-DD" form

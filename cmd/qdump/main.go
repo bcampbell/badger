@@ -5,7 +5,7 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/bcampbell/badger"
+	//	"github.com/bcampbell/badger"
 	"github.com/bcampbell/badger/query"
 	"os"
 )
@@ -16,10 +16,10 @@ func main() {
 	qs := flag.Arg(0)
 	fmt.Println(qs)
 
-	q, err := query.Parse(qs, "default")
+	q, err := query.Parse(qs, []string{"title", "author", "tags", "content", "published"}, "content")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "ERROR: %s\n", err)
 		os.Exit(1)
 	}
-	fmt.Println(badger.DumpTree(q, 0))
+	fmt.Println(q)
 }

@@ -1,20 +1,8 @@
 package badger
 
 import (
+	"fmt"
 	"strings"
-)
-
-type queryKind uint
-
-const (
-	All queryKind = iota
-	Exact
-	Contains
-	Range
-	ExactIn
-	OR
-	AND
-	Diff
 )
 
 type Query interface {
@@ -78,12 +66,17 @@ func NewContainsQuery(field, value string) Query {
 
 func (q *containsQuery) String() string {
 	// TODO
-	return q.field + ":blahblah"
+	if len(q.values) == 1 {
+		return fmt.Sprintf(`%s:%s`, q.field, q.values[0])
+	} else {
+		return fmt.Sprintf(`%s: IN %v`, q.field, q.values)
+	}
 }
+
 func (q *containsQuery) perform(coll *Collection) docSet {
 	return coll.find(q.field, func(foo string) bool {
+		foo = strings.ToLower(foo)
 		for _, v := range q.values {
-			foo = strings.ToLower(foo)
 			if strings.Contains(foo, v) {
 				return true
 			}
@@ -102,7 +95,7 @@ func NewORQuery(left, right Query) Query {
 	return &orQuery{left: left, right: right}
 }
 func (q *orQuery) String() string {
-	return "(" + q.left.String() + "OR" + q.right.String() + ")"
+	return "(" + q.left.String() + " OR " + q.right.String() + ")"
 }
 
 func (q *orQuery) perform(coll *Collection) docSet {
@@ -121,7 +114,7 @@ func NewANDQuery(left, right Query) Query {
 }
 
 func (q *andQuery) String() string {
-	return "(" + q.left.String() + "AND" + q.right.String() + ")"
+	return "(" + q.left.String() + " AND " + q.right.String() + ")"
 }
 
 func (q *andQuery) perform(coll *Collection) docSet {
