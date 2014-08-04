@@ -17,6 +17,7 @@ const (
 	tokPlus
 	tokMinus
 	tokColon
+	tokEquals
 	tokOr
 	tokAnd
 	tokLParen
@@ -35,6 +36,7 @@ var singles = map[rune]tokType{
 	':': tokColon,
 	'+': tokPlus,
 	'-': tokMinus,
+	'=': tokEquals,
 }
 
 type token struct {
@@ -55,6 +57,7 @@ func (tok token) String() string {
 		tokPlus:   "plus",
 		tokMinus:  "minus",
 		tokColon:  "colon",
+		tokEquals: "equals",
 		tokLParen: "lparen",
 		tokRParen: "rparen",
 		tokLSq:    "lsq",

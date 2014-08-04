@@ -86,6 +86,18 @@ func (p *parser) parseExpr(defaultField string, validFields []string) (badger.Qu
 	tok := p.next()
 	switch tok.typ {
 
+	case tokEquals:
+		// exact match
+		tok = p.next()
+		if tok.typ == tokLit {
+			q = badger.NewExactQuery(field, tok.val)
+		} else if tok.typ == tokQuoted {
+			txt := string(tok.val[1 : len(tok.val)-1])
+			q = badger.NewExactQuery(field, txt)
+		} else {
+			return nil, fmt.Errorf("expected term directly after '=', but got '%s'", tok.val)
+		}
+
 	case tokLit:
 		q = badger.NewContainsQuery(field, tok.val)
 	case tokQuoted:

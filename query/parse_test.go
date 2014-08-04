@@ -23,7 +23,8 @@ func TestBasic(t *testing.T) {
 		`published:[ 2010-04-15 TO]`,
 		//`headline:(citrus -grapefruit)`,
 		//`published: ..2010-04-15`,
-
+		`headline:="blah blah blah"`,
+		`headline:(=foo OR =wibble)`,
 		"(fred bloggs) OR (bob smith)",
 	}
 
