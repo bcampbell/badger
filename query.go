@@ -2,6 +2,7 @@ package badger
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 )
 
@@ -146,24 +147,55 @@ func (q *andQuery) perform(coll *Collection) docSet {
 	return Intersect(a, b)
 }
 
+type rangeKind int
+
+const (
+	str rangeKind = iota
+	date
+)
+
 type rangeQuery struct {
+	kind               rangeKind
 	field, first, last string
 }
 
 // NewRangeQuery returns a query to match docs with field values within
 // inclusive range [first,last]
 func NewRangeQuery(field, first, last string) Query {
-	return &rangeQuery{field: field, first: strings.ToLower(first), last: strings.ToLower(last)}
+	datePat := regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
+
+	var kind rangeKind
+	if first == "" && last == "" {
+		kind = str
+	} else if first == "" && datePat.MatchString(last) {
+		kind = date
+	} else if last == "" && datePat.MatchString(first) {
+		kind = date
+	} else if datePat.MatchString(first) && datePat.MatchString(last) {
+		kind = date
+	}
+
+	return &rangeQuery{kind: kind, field: field, first: strings.ToLower(first), last: strings.ToLower(last)}
 }
 
 func (q *rangeQuery) String() string {
 	return q.field + ": [" + q.first + " TO " + q.last + "]"
 }
 
+var dateExtractPat *regexp.Regexp = regexp.MustCompile(`\d{4}-\d{2}-\d{2}`)
+
 func (q *rangeQuery) perform(coll *Collection) docSet {
-	return coll.find(q.field, func(foo string) bool {
-		foo = strings.ToLower(foo)
-		// TODO: handle dates better!
-		return foo >= q.first && foo <= q.last
-	})
+	if q.kind == str {
+		// straight string compare
+		return coll.find(q.field, func(foo string) bool {
+			foo = strings.ToLower(foo)
+			return foo >= q.first && foo <= q.last
+		})
+	} else {
+		// date compare
+		return coll.find(q.field, func(foo string) bool {
+			foo = dateExtractPat.FindString(foo)
+			return foo >= q.first && foo <= q.last
+		})
+	}
 }
