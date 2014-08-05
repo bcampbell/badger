@@ -71,8 +71,10 @@ func (p *parser) parseExpr(defaultField string, validFields []string) (badger.Qu
 		return nil, nil
 	}
 
-	// optional boolean modifier and field
-	//boolMod := p.parseBoolMod()
+	// optional boolean modifier (default tokPlus)
+	boolMod := p.parseBoolMod()
+
+	// optional field
 	field, err := p.parseField(validFields)
 	if err != nil {
 		return nil, err
@@ -122,6 +124,11 @@ func (p *parser) parseExpr(defaultField string, validFields []string) (badger.Qu
 
 	default:
 		return nil, fmt.Errorf("unexpected: %s", tok)
+	}
+
+	//
+	if boolMod == tokMinus {
+		q = badger.NewNOTQuery(q)
 	}
 
 	tok = p.next()

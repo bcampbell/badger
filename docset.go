@@ -24,3 +24,11 @@ func Intersect(a, b docSet) docSet {
 	}
 	return out
 }
+
+// Subtract removes all members of b from a
+func (a docSet) Subtract(b docSet) {
+	var id uintptr
+	for id, _ = range b {
+		delete(a, id)
+	}
+}

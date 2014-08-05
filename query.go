@@ -91,6 +91,24 @@ func (q *containsQuery) perform(coll *Collection) docSet {
 	})
 }
 
+type notQuery struct {
+	subQuery Query
+}
+
+// NewNOTQuery returns everything that doesn't match subquery q
+func NewNOTQuery(q Query) Query {
+	return &notQuery{subQuery: q}
+}
+func (q *notQuery) String() string {
+	return "-" + q.subQuery.String()
+}
+
+func (q *notQuery) perform(coll *Collection) docSet {
+	out := coll.findAll()
+	out.Subtract(q.subQuery.perform(coll))
+	return out
+}
+
 type orQuery struct {
 	left, right Query
 }

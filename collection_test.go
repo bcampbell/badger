@@ -79,6 +79,12 @@ func TestSimple(t *testing.T) {
 	if len(NewContainsQuery("Tags", "reddish").perform(coll)) != 3 {
 		t.Error("wrong number tagged reddish")
 	}
+
+	notgreens := NewNOTQuery(NewExactQuery("Colour", "green")).perform(coll)
+	if len(notgreens) != 4 {
+		t.Error("wrong number not green")
+	}
+
 }
 
 func TestReadWrite(t *testing.T) {

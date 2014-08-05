@@ -26,6 +26,7 @@ func TestBasic(t *testing.T) {
 		`headline:="blah blah blah"`,
 		`headline:(=foo OR =wibble)`,
 		"(fred bloggs) OR (bob smith)",
+		"red -black green blue",
 	}
 
 	for _, qs := range testQueries {
