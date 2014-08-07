@@ -136,6 +136,20 @@ func (coll *Collection) Put(doc interface{}) {
 	coll.dirty = true
 }
 
+func (coll *Collection) Remove(doc interface{}) {
+	t := reflect.TypeOf(doc)
+	if t != coll.docType {
+		panic(fmt.Sprintf("doc type mismatch (got %s, expecting %s)", t, coll.docType))
+	}
+	key := reflect.ValueOf(doc).Pointer()
+
+	coll.Lock()
+	defer coll.Unlock()
+
+	delete(coll.docs, key)
+	coll.dirty = true
+}
+
 /*
 func (coll *Collection) Get(id string) interface{} {
 	coll.RLock()

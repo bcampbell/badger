@@ -11,6 +11,22 @@ type Query interface {
 	String() string
 }
 
+type nilQuery struct {
+}
+
+// NewNilQuery returns a query which matches nothing
+func NewNilQuery() Query {
+	return &nilQuery{}
+}
+
+func (q *nilQuery) String() string {
+	return "<NONE>"
+}
+
+func (q *nilQuery) perform(coll *Collection) docSet {
+	return docSet{}
+}
+
 type allQuery struct {
 }
 
@@ -166,7 +182,7 @@ func NewRangeQuery(field, first, last string) Query {
 
 	var kind rangeKind
 	if first == "" && last == "" {
-		kind = str
+		return NewNilQuery()
 	} else if first == "" && datePat.MatchString(last) {
 		kind = date
 	} else if last == "" && datePat.MatchString(first) {
@@ -187,14 +203,40 @@ var dateExtractPat *regexp.Regexp = regexp.MustCompile(`\d{4}-\d{2}-\d{2}`)
 func (q *rangeQuery) perform(coll *Collection) docSet {
 	if q.kind == str {
 		// straight string compare
+		// TODO: less-than/greater-than special cases
 		return coll.find(q.field, func(foo string) bool {
 			foo = strings.ToLower(foo)
 			return foo >= q.first && foo <= q.last
 		})
 	} else {
 		// date compare
+		if q.first == "" {
+			// less-than-or-equal-to
+			return coll.find(q.field, func(foo string) bool {
+				foo = dateExtractPat.FindString(foo)
+				if foo == "" {
+					return false
+				}
+				return foo <= q.last
+			})
+		}
+
+		if q.last == "" {
+			// greater-than-or-equal-to
+			return coll.find(q.field, func(foo string) bool {
+				foo = dateExtractPat.FindString(foo)
+				if foo == "" {
+					return false
+				}
+				return foo >= q.first
+			})
+		}
+		// inclusive range compare
 		return coll.find(q.field, func(foo string) bool {
 			foo = dateExtractPat.FindString(foo)
+			if foo == "" {
+				return false
+			}
 			return foo >= q.first && foo <= q.last
 		})
 	}
