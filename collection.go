@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"reflect"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -80,6 +81,14 @@ func (coll *Collection) Save(filename string) error {
 	}
 	coll.Write(outFile)
 	outFile.Close()
+
+	// needed for windows - Rename can't overwrite
+	if runtime.GOOS == "windows" {
+		err = os.Remove(filename)
+		if err != nil {
+			return err
+		}
+	}
 	err = os.Rename(tmpFilename, filename)
 	if err != nil {
 		return err
