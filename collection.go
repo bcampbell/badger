@@ -1,18 +1,11 @@
 package badger
 
 import (
-	"encoding/gob"
 	"fmt"
-	"io"
-	"os"
 	"reflect"
-	"runtime"
 	"strings"
 	"sync"
-	"time"
 )
-
-var magicCookie = []byte{'b', 'a', 'd', '2'}
 
 // Collection holds a set of documents, all of the same type.
 // Caveats:
@@ -24,7 +17,6 @@ type Collection struct {
 	docs         map[uintptr]interface{}
 	docType      reflect.Type
 	DefaultField string // field to search by default (mainly for the benefit of the query parser)
-	filename     string // filename for saving
 	dirty        bool
 }
 
@@ -46,54 +38,6 @@ func NewCollection(referenceDoc interface{}) *Collection {
 	}
 
 	return coll
-}
-
-func (coll *Collection) EnableAutosave(filename string) {
-	// TODO: use a channel to receive an exit signal. Add a Close() method to Collection to send it.
-	coll.filename = filename
-	if coll.filename == "" {
-		panic("no filename")
-	}
-	go func() {
-		var interval time.Duration = 5 * time.Second
-		for {
-			time.Sleep(interval)
-			if coll.dirty {
-				fmt.Fprintf(os.Stderr, "Autosaving...\n")
-				err := coll.Save(coll.filename)
-				if err != nil {
-					fmt.Fprintf(os.Stderr, "Autosave failed: %s\n", err)
-					interval *= 2 // back off
-				} else {
-					fmt.Fprintf(os.Stderr, "Autosave OK\n")
-					interval = 5 * time.Second
-				}
-			}
-		}
-	}()
-}
-
-func (coll *Collection) Save(filename string) error {
-	tmpFilename := filename + ".new"
-	outFile, err := os.Create(tmpFilename)
-	if err != nil {
-		return err
-	}
-	coll.Write(outFile)
-	outFile.Close()
-
-	// needed for windows - Rename can't overwrite
-	if runtime.GOOS == "windows" {
-		err = os.Remove(filename)
-		if err != nil {
-			return err
-		}
-	}
-	err = os.Rename(tmpFilename, filename)
-	if err != nil {
-		return err
-	}
-	return nil
 }
 
 func (coll *Collection) Count() int {
@@ -216,73 +160,6 @@ func (coll *Collection) find(field string, cmp func(string) bool) docSet {
 		panic("can only query string and []string fields")
 	}
 	return matching
-}
-
-func Read(in io.Reader, referenceDoc interface{}) (*Collection, error) {
-	var err error
-
-	cookie := []byte{0, 0, 0, 0}
-	_, err = io.ReadFull(in, cookie)
-	if err != nil {
-		return nil, err
-	}
-	for i := 0; i < len(magicCookie); i++ {
-		if cookie[i] != magicCookie[i] {
-			return nil, fmt.Errorf("unrecognised file format")
-		}
-	}
-
-	dec := gob.NewDecoder(in)
-
-	coll := NewCollection(referenceDoc)
-	coll.Lock()
-	defer coll.Unlock()
-
-	var count int
-	err = dec.Decode(&count)
-	if err != nil {
-		return nil, err
-	}
-
-	//inType := reflect.PtrTo(coll.docType)
-
-	for i := 0; i < count; i++ {
-		doc := reflect.New(coll.docType.Elem())
-		err = dec.Decode(doc.Interface())
-		if err != nil {
-			return nil, err
-		}
-		key := doc.Pointer()
-		coll.docs[key] = doc.Interface()
-	}
-
-	return coll, err
-}
-
-func (coll *Collection) Write(out io.Writer) error {
-	var err error
-
-	coll.RLock()
-	defer coll.RUnlock()
-	_, err = out.Write(magicCookie)
-	if err != nil {
-		return err
-	}
-
-	enc := gob.NewEncoder(out)
-
-	err = enc.Encode(len(coll.docs))
-	if err != nil {
-		return err
-	}
-	for _, doc := range coll.docs {
-		err = enc.Encode(doc)
-		if err != nil {
-			return err
-		}
-	}
-	coll.dirty = false
-	return nil
 }
 
 // Find executes a query and fills out a slice containing the results.

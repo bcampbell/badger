@@ -1,7 +1,6 @@
 package badger
 
 import (
-	"bytes"
 	"fmt"
 	"testing"
 )
@@ -85,42 +84,6 @@ func TestSimple(t *testing.T) {
 		t.Error("wrong number not green")
 	}
 
-}
-
-func TestReadWrite(t *testing.T) {
-	// save out the dummy data then read it back in
-
-	coll := dummyCollection()
-	var buf bytes.Buffer
-	err := coll.Write(&buf)
-	if err != nil {
-		t.Error("write failed")
-		return
-	}
-
-	coll2, err := Read(&buf, &TestDoc{})
-	if err != nil {
-		t.Errorf("read failed (%s)", err)
-		return
-	}
-
-	if coll.Count() != coll2.Count() {
-		t.Error("count mismatched")
-
-	}
-	// make sure result is kind of sane
-	greens := NewExactQuery("Colour", "green").perform(coll)
-	if len(greens) != 1 {
-		t.Error("Wrong number of greens")
-	}
-	/*
-		for id, _ := range coll.findAll() {
-			a := coll.Get(id).(*TestDoc)
-
-			b := coll2.Get(id).(*TestDoc)
-			fmt.Printf("%v %v\n", a, b)
-		}
-	*/
 }
 
 func TestUpdate(t *testing.T) {
