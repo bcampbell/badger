@@ -14,10 +14,11 @@ import (
 //
 type Collection struct {
 	sync.RWMutex
-	docs         map[uintptr]interface{}
-	docType      reflect.Type
-	DefaultField string // field to search by default (mainly for the benefit of the query parser)
-	dirty        bool
+	docs            map[uintptr]interface{}
+	docType         reflect.Type
+	DefaultField    string // field to search by default (mainly for the benefit of the query parser)
+	dirty           bool
+	wholeWordFields map[string]struct{}
 }
 
 // NewCollection initialises a collection for holding documents of
@@ -26,8 +27,9 @@ type Collection struct {
 // fine. Only it's type is used.
 func NewCollection(referenceDoc interface{}) *Collection {
 	coll := &Collection{
-		docs:    make(map[uintptr]interface{}),
-		docType: reflect.TypeOf(referenceDoc),
+		docs:            make(map[uintptr]interface{}),
+		wholeWordFields: make(map[string]struct{}),
+		docType:         reflect.TypeOf(referenceDoc),
 	}
 
 	if coll.docType.Kind() != reflect.Ptr {
@@ -38,6 +40,11 @@ func NewCollection(referenceDoc interface{}) *Collection {
 	}
 
 	return coll
+}
+
+//Cheesy-as-hell hack to force a field to require whole-word-matching. Temporary.
+func (coll *Collection) SetWholeWordField(fieldName string) {
+	coll.wholeWordFields[strings.ToLower(fieldName)] = struct{}{}
 }
 
 func (coll *Collection) Count() int {

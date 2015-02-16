@@ -96,16 +96,57 @@ func (q *containsQuery) String() string {
 }
 
 func (q *containsQuery) perform(coll *Collection) docSet {
-	return coll.find(q.field, func(foo string) bool {
-		foo = strings.ToLower(foo)
-		for _, v := range q.values {
-			if strings.Contains(foo, v) {
-				return true
-			}
-		}
 
-		return false
-	})
+	if _, got := coll.wholeWordFields[strings.ToLower(q.field)]; !got {
+		// no whole-word check needed - just plain string search
+		return coll.find(q.field, func(foo string) bool {
+			foo = strings.ToLower(foo)
+			for _, v := range q.values {
+				if strings.Contains(foo, v) {
+					return true
+				}
+			}
+			return false
+		})
+
+	} else {
+		// require whole-word matching (ie "tory" does not match "history")
+
+		return coll.find(q.field, func(foo string) bool {
+			// 1st pass - just do string search
+			found := false
+			foo = strings.ToLower(foo)
+			for _, v := range q.values {
+				if strings.Contains(foo, v) {
+					found = true
+				}
+			}
+			if !found {
+				return false
+			}
+
+			// now do more rigorous check:
+			searchSpace := Tokenise(foo)
+			for _, v := range q.values {
+				// the search phrase might tokenise into multiple terms
+				searchTerms := Tokenise(v)
+				for pos := 0; pos <= len(searchSpace)-len(searchTerms); pos++ {
+					t := 0
+					for ; t < len(searchTerms); t++ {
+						if searchSpace[pos+t] != searchTerms[t] {
+							break
+						}
+					}
+					if t == len(searchTerms) {
+						// got a full match!
+						return true
+					}
+				}
+			}
+			return false
+		})
+	}
+
 }
 
 type notQuery struct {
