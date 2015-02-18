@@ -25,6 +25,7 @@ func TestTokenise(t *testing.T) {
 		{"Fred's hat", []string{"freds", "hat"}},
 		{"for $10000000.", []string{"for", "10000000"}},
 		{"a book-end!", []string{"a", "bookend"}},
+		{"will it end in chaos?", []string{"will", "it", "end", "in", "chaos"}},
 	}
 
 	for _, foo := range testData {

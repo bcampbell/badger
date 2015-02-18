@@ -113,17 +113,19 @@ func (q *containsQuery) perform(coll *Collection) docSet {
 		// require whole-word matching (ie "tory" does not match "history")
 
 		return coll.find(q.field, func(foo string) bool {
-			// 1st pass - just do string search
-			found := false
-			foo = strings.ToLower(foo)
-			for _, v := range q.values {
-				if strings.Contains(foo, v) {
-					found = true
+			/*
+				// 1st pass - just do string search
+				found := false
+				foo = strings.ToLower(foo)
+				for _, v := range q.values {
+					if strings.Contains(foo, v) {
+						found = true
+					}
 				}
-			}
-			if !found {
-				return false
-			}
+				if !found {
+					return false
+				}
+			*/
 
 			// now do more rigorous check:
 			searchSpace := Tokenise(foo)
