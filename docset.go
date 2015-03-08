@@ -1,10 +1,10 @@
 package badger
 
-type docSet map[uintptr]struct{}
+type DocSet map[DocID]struct{}
 
-func Union(a, b docSet) docSet {
-	out := docSet{}
-	var id uintptr
+func Union(a, b DocSet) DocSet {
+	out := DocSet{}
+	var id DocID
 	for id, _ = range a {
 		out[id] = struct{}{}
 	}
@@ -14,9 +14,9 @@ func Union(a, b docSet) docSet {
 	return out
 }
 
-func Intersect(a, b docSet) docSet {
-	out := docSet{}
-	var id uintptr
+func Intersect(a, b DocSet) DocSet {
+	out := DocSet{}
+	var id DocID
 	for id, _ = range a {
 		if _, got := b[id]; got {
 			out[id] = struct{}{}
@@ -26,8 +26,8 @@ func Intersect(a, b docSet) docSet {
 }
 
 // Subtract removes all members of b from a
-func (a docSet) Subtract(b docSet) {
-	var id uintptr
+func (a DocSet) Subtract(b DocSet) {
+	var id DocID
 	for id, _ = range b {
 		delete(a, id)
 	}

@@ -2,50 +2,26 @@ package badger
 
 import (
 	"fmt"
-	"testing"
+	//	"testing"
 )
 
-type SubDoc struct {
-	Name     string
-	ShoeSize int
-}
-
-type TestDoc struct {
-	ID      string
-	Colour  string
-	Tags    []string
-	Details SubDoc
-}
-
 func dummyCollection() *Collection {
-	coll := NewCollection(&TestDoc{})
+	coll := NewCollection()
 
-	testData := []*TestDoc{
-		&TestDoc{"1", "red", []string{"primary", "reddish"}, SubDoc{}},
-		&TestDoc{"two", "green", []string{"primary"}, SubDoc{"Bob", 42}},
-		&TestDoc{"3", "blue", []string{"primary"}, SubDoc{}},
-		&TestDoc{"4", "pink", []string{"reddish"}, SubDoc{}},
-		&TestDoc{"five", "crimson", []string{"reddish"}, SubDoc{}},
-	}
-	for _, dat := range testData {
-		coll.Put(dat)
-	}
+	coll.IndexText(1, "title", "Big fat load of blah", 0)
 	return coll
 }
 
-func TestFind(t *testing.T) {
+func ExampleTestBasics() {
 	coll := dummyCollection()
 
-	var out []*TestDoc
+	fmt.Printf("%+v\n", *coll)
+	// Output:
+	//
 
-	q := NewContainsQuery("Colour", "e")
-	coll.Find(q, &out)
-
-	if len(out) != 3 {
-		t.Error("Count error")
-	}
 }
 
+/*
 func TestSimple(t *testing.T) {
 
 	coll := dummyCollection()
@@ -112,3 +88,4 @@ func ExampleTestValidFields() {
 	// Output:
 	// [ID Colour Tags Details.Name Details.ShoeSize Extra]
 }
+*/

@@ -7,7 +7,7 @@ import (
 )
 
 type Query interface {
-	perform(coll *Collection) docSet
+	perform(coll *Collection) DocSet
 	String() string
 }
 
@@ -23,8 +23,8 @@ func (q *nilQuery) String() string {
 	return "<NONE>"
 }
 
-func (q *nilQuery) perform(coll *Collection) docSet {
-	return docSet{}
+func (q *nilQuery) perform(coll *Collection) DocSet {
+	return DocSet{}
 }
 
 type allQuery struct {
@@ -39,7 +39,7 @@ func (q *allQuery) String() string {
 	return "<ALL>"
 }
 
-func (q *allQuery) perform(coll *Collection) docSet {
+func (q *allQuery) perform(coll *Collection) DocSet {
 	return coll.findAll()
 }
 
@@ -64,91 +64,56 @@ func (q *exactQuery) String() string {
 	return q.field + ":blahblah"
 }
 
-func (q *exactQuery) perform(coll *Collection) docSet {
-	return coll.find(q.field, func(foo string) bool {
-		foo = strings.ToLower(foo)
-		for _, v := range q.values {
-			if foo == v {
-				return true
-			}
-		}
-		return false
-	})
-}
-
-type containsQuery struct {
-	field  string
-	values []string
-}
-
-// NewContainsQuery finds docs with field containing the value
-func NewContainsQuery(field, value string) Query {
-	return &containsQuery{field: field, values: []string{strings.ToLower(value)}}
-}
-
-func (q *containsQuery) String() string {
-	// TODO
-	if len(q.values) == 1 {
-		return fmt.Sprintf(`%s:%s`, q.field, q.values[0])
-	} else {
-		return fmt.Sprintf(`%s: IN %v`, q.field, q.values)
-	}
-}
-
-func (q *containsQuery) perform(coll *Collection) docSet {
-
-	if _, got := coll.wholeWordFields[strings.ToLower(q.field)]; !got {
-		// no whole-word check needed - just plain string search
+func (q *exactQuery) perform(coll *Collection) DocSet {
+	/*
 		return coll.find(q.field, func(foo string) bool {
 			foo = strings.ToLower(foo)
 			for _, v := range q.values {
-				if strings.Contains(foo, v) {
+				if foo == v {
 					return true
 				}
 			}
 			return false
 		})
+	*/
+	return DocSet{}
+}
 
-	} else {
-		// require whole-word matching (ie "tory" does not match "history")
+type containsQuery struct {
+	field  string
+	phrase string
+}
 
-		return coll.find(q.field, func(foo string) bool {
-			/*
-				// 1st pass - just do string search
-				found := false
-				foo = strings.ToLower(foo)
-				for _, v := range q.values {
-					if strings.Contains(foo, v) {
-						found = true
-					}
-				}
-				if !found {
-					return false
-				}
-			*/
+// NewContainsQuery finds docs with field containing the phrase
+func NewContainsQuery(field, phrase string) Query {
+	return &containsQuery{field: field, phrase: phrase}
+}
 
-			// now do more rigorous check:
-			searchSpace := Tokenise(foo)
-			for _, v := range q.values {
-				// the search phrase might tokenise into multiple terms
-				searchTerms := Tokenise(v)
-				for pos := 0; pos <= len(searchSpace)-len(searchTerms); pos++ {
-					t := 0
-					for ; t < len(searchTerms); t++ {
-						if searchSpace[pos+t] != searchTerms[t] {
-							break
-						}
-					}
-					if t == len(searchTerms) {
-						// got a full match!
-						return true
-					}
-				}
-			}
-			return false
-		})
+func (q *containsQuery) String() string {
+	return fmt.Sprintf(`%s:%q`, q.field, q.phrase)
+}
+
+func (q *containsQuery) perform(coll *Collection) DocSet {
+	policy := coll.fieldPolicy(q.field)
+	idx, got := coll.indices[q.field]
+	if !got {
+		return DocSet{} // non-existant field?
 	}
 
+	// split phrase into terms
+	terms, _ := policy.Cook(q.phrase)
+
+	if len(terms) < 1 {
+		return DocSet{} // nothing to search for
+	}
+
+	// HACK FOR NOW - just a single term
+	matches := DocSet{}
+	for docID, _ := range idx[terms[0]] {
+		matches[docID] = struct{}{}
+	}
+
+	return matches
 }
 
 type notQuery struct {
@@ -163,7 +128,7 @@ func (q *notQuery) String() string {
 	return "-" + q.subQuery.String()
 }
 
-func (q *notQuery) perform(coll *Collection) docSet {
+func (q *notQuery) perform(coll *Collection) DocSet {
 	out := coll.findAll()
 	out.Subtract(q.subQuery.perform(coll))
 	return out
@@ -181,7 +146,7 @@ func (q *orQuery) String() string {
 	return "(" + q.left.String() + " OR " + q.right.String() + ")"
 }
 
-func (q *orQuery) perform(coll *Collection) docSet {
+func (q *orQuery) perform(coll *Collection) DocSet {
 	a := q.left.perform(coll)
 	b := q.right.perform(coll)
 	return Union(a, b)
@@ -200,7 +165,7 @@ func (q *andQuery) String() string {
 	return "(" + q.left.String() + " AND " + q.right.String() + ")"
 }
 
-func (q *andQuery) perform(coll *Collection) docSet {
+func (q *andQuery) perform(coll *Collection) DocSet {
 	a := q.left.perform(coll)
 	b := q.right.perform(coll)
 	return Intersect(a, b)
@@ -243,44 +208,47 @@ func (q *rangeQuery) String() string {
 
 var dateExtractPat *regexp.Regexp = regexp.MustCompile(`\d{4}-\d{2}-\d{2}`)
 
-func (q *rangeQuery) perform(coll *Collection) docSet {
-	if q.kind == str {
-		// straight string compare
-		// TODO: less-than/greater-than special cases
-		return coll.find(q.field, func(foo string) bool {
-			foo = strings.ToLower(foo)
-			return foo >= q.first && foo <= q.last
-		})
-	} else {
-		// date compare
-		if q.first == "" {
-			// less-than-or-equal-to
+func (q *rangeQuery) perform(coll *Collection) DocSet {
+	return DocSet{}
+	/*
+		if q.kind == str {
+			// straight string compare
+			// TODO: less-than/greater-than special cases
 			return coll.find(q.field, func(foo string) bool {
-				foo = dateExtractPat.FindString(foo)
-				if foo == "" {
-					return false
-				}
-				return foo <= q.last
+				foo = strings.ToLower(foo)
+				return foo >= q.first && foo <= q.last
 			})
-		}
-
-		if q.last == "" {
-			// greater-than-or-equal-to
-			return coll.find(q.field, func(foo string) bool {
-				foo = dateExtractPat.FindString(foo)
-				if foo == "" {
-					return false
-				}
-				return foo >= q.first
-			})
-		}
-		// inclusive range compare
-		return coll.find(q.field, func(foo string) bool {
-			foo = dateExtractPat.FindString(foo)
-			if foo == "" {
-				return false
+		} else {
+			// date compare
+			if q.first == "" {
+				// less-than-or-equal-to
+				return coll.find(q.field, func(foo string) bool {
+					foo = dateExtractPat.FindString(foo)
+					if foo == "" {
+						return false
+					}
+					return foo <= q.last
+				})
 			}
-			return foo >= q.first && foo <= q.last
-		})
-	}
+
+			if q.last == "" {
+				// greater-than-or-equal-to
+				return coll.find(q.field, func(foo string) bool {
+					foo = dateExtractPat.FindString(foo)
+					if foo == "" {
+						return false
+					}
+					return foo >= q.first
+				})
+			}
+			// inclusive range compare
+			return coll.find(q.field, func(foo string) bool {
+				foo = dateExtractPat.FindString(foo)
+				if foo == "" {
+					return false
+				}
+				return foo >= q.first && foo <= q.last
+			})
+		}
+	*/
 }

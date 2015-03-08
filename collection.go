@@ -2,112 +2,90 @@ package badger
 
 import (
 	"fmt"
-	"reflect"
+	//	"reflect"
 	"strings"
 	"sync"
 )
 
-// Collection holds a set of documents, all of the same type.
-// Caveats:
-// - have to store ptrs to structs
-// - can only query on string and []string fields (but can store anything)
-//
+type DocID uint
+type TermPos int
+
+type termMap map[DocID][]TermPos
+
+// map terms->docs->positions
+type index map[string]termMap
+
+type TermSplitter func(string) []string
+type TermCleaner func(string) string
+
+// return true if it's a stopword
+type StopwordChecker func(string) bool
+
+type FieldPolicy struct {
+	SplitTerms TermSplitter
+	CleanTerm  TermCleaner
+	IsStopword StopwordChecker
+
+	BruteForceMatch bool
+}
+
+func (policy *FieldPolicy) Cook(txt string) ([]string, []int) {
+	pos := 0
+	rawTerms := policy.SplitTerms(txt)
+	terms := []string{}
+	positions := []int{}
+	for _, term := range rawTerms {
+		term = policy.CleanTerm(term)
+		if !policy.IsStopword(term) {
+			terms = append(terms, term)
+			positions = append(positions, pos)
+		}
+		pos++
+	}
+	return terms, positions
+}
+
+func defaultStopwordChecker(string) {
+}
+
+var defaultPolicy = FieldPolicy{
+	SplitTerms:      strings.Fields,
+	CleanTerm:       strings.ToLower,
+	IsStopword:      func(string) bool { return false },
+	BruteForceMatch: false,
+}
+
 type Collection struct {
 	sync.RWMutex
-	docs            map[uintptr]interface{}
-	docType         reflect.Type
-	DefaultField    string // field to search by default (mainly for the benefit of the query parser)
-	dirty           bool
-	wholeWordFields map[string]struct{}
+
+	fields map[string]FieldPolicy
+	// map fields to indices
+	indices      map[string]index
+	allDocs      DocSet
+	DefaultField string // field to search by default (mainly for the benefit of the query parser)
 }
 
-// NewCollection initialises a collection for holding documents of
-// same type as referenceDoc.
-// The contents of referenceDoc are unimportant - a zero object is
-// fine. Only it's type is used.
-func NewCollection(referenceDoc interface{}) *Collection {
-	coll := &Collection{
-		docs:            make(map[uintptr]interface{}),
-		wholeWordFields: make(map[string]struct{}),
-		docType:         reflect.TypeOf(referenceDoc),
+func NewCollection() *Collection {
+	coll := Collection{
+		indices: map[string]index{},
+		allDocs: DocSet{},
 	}
-
-	if coll.docType.Kind() != reflect.Ptr {
-		panic("doctype must be ptr")
-	}
-	if coll.docType.Elem().Kind() != reflect.Struct {
-		panic("doctype must be ptr to struct")
-	}
-
-	return coll
-}
-
-//Cheesy-as-hell hack to force a field to require whole-word-matching. Temporary.
-func (coll *Collection) SetWholeWordField(fieldName string) {
-	coll.wholeWordFields[strings.ToLower(fieldName)] = struct{}{}
+	return &coll
 }
 
 func (coll *Collection) Count() int {
 	coll.RLock()
 	defer coll.RUnlock()
-	return len(coll.docs)
+	return len(coll.allDocs)
 }
 
-// ValidField returns a list of valid field names
-func (coll *Collection) ValidFields() []string {
-	coll.RLock()
-	defer coll.RUnlock()
-	return validFields(coll.docType.Elem())
-}
-
-// TODO: update to:
-// 1) handler pointer members
-// 2) filter out unwanted members (eg functions)
-func validFields(typ reflect.Type) []string {
-	fields := []string{}
-	for i := 0; i < typ.NumField(); i++ {
-		sf := typ.Field(i)
-		if sf.Type.Kind() == reflect.Struct {
-			childFields := validFields(sf.Type)
-			if !sf.Anonymous {
-				for j, _ := range childFields {
-					childFields[j] = sf.Name + "." + childFields[j]
-				}
-			}
-			fields = append(fields, childFields...)
-		} else {
-			fields = append(fields, sf.Name)
-		}
-	}
-	return fields
-}
-
-func (coll *Collection) Put(doc interface{}) {
-	t := reflect.TypeOf(doc)
-	if t != coll.docType {
-		panic(fmt.Sprintf("doc type mismatch (got %s, expecting %s)", t, coll.docType))
-	}
-	key := reflect.ValueOf(doc).Pointer()
+func (coll *Collection) Remove(docID DocID) {
+	panic("not implemented")
 
 	coll.Lock()
 	defer coll.Unlock()
 
-	coll.docs[key] = doc
-	coll.dirty = true
-}
-
-func (coll *Collection) Remove(doc interface{}) {
-	t := reflect.TypeOf(doc)
-	if t != coll.docType {
-		panic(fmt.Sprintf("doc type mismatch (got %s, expecting %s)", t, coll.docType))
-	}
-	key := reflect.ValueOf(doc).Pointer()
-
-	coll.Lock()
-	defer coll.Unlock()
-
-	delete(coll.docs, key)
-	coll.dirty = true
+	delete(coll.allDocs, docID)
 }
 
 /*
@@ -118,109 +96,60 @@ func (coll *Collection) Get(id string) interface{} {
 }
 */
 
-func (coll *Collection) findAll() docSet {
-	matching := docSet{}
-	for id, _ := range coll.docs {
-		matching[id] = struct{}{}
+func (coll *Collection) fieldPolicy(field string) FieldPolicy {
+	policy, got := coll.fields[field]
+	if !got {
+		return defaultPolicy
 	}
-	return matching
+	return policy
 }
 
-func (coll *Collection) find(field string, cmp func(string) bool) docSet {
-	// resolve the field
-	field = strings.ToLower(field)
+func (coll *Collection) setFieldPolicy(field string, policy FieldPolicy) {
+	coll.fields[field] = policy
+}
 
-	sf, ok := coll.docType.Elem().FieldByNameFunc(func(name string) bool {
-		return strings.ToLower(name) == field
-	})
-	if !ok {
-		panic("couldn't resolve field " + field)
+func (coll *Collection) findAll() DocSet {
+	all := DocSet{}
+	for docID, _ := range coll.allDocs {
+		all[docID] = struct{}{}
 	}
-
-	matching := docSet{}
-
-	// string or []string?
-	switch sf.Type.Kind() {
-	case reflect.String:
-		//
-		for id, doc := range coll.docs {
-			s := reflect.ValueOf(doc).Elem() // get struct
-			f := s.FieldByIndex(sf.Index)
-			if cmp(f.String()) {
-				matching[id] = struct{}{}
-			}
-		}
-	case reflect.Slice:
-		// it's []string
-		for id, doc := range coll.docs {
-			s := reflect.ValueOf(doc).Elem() // get struct
-			f := s.FieldByIndex(sf.Index)    // get slice
-			// check each item in the slice
-			for idx := 0; idx < f.Len(); idx++ {
-				if cmp(f.Index(idx).String()) {
-					matching[id] = struct{}{}
-					break
-				}
-			}
-		}
-	default:
-		panic("can only query string and []string fields")
-	}
-	return matching
+	return all
 }
 
 // Find executes a query and fills out a slice containing the results.
-// result must be a pointer to a slice
-// TODO: why couldn't we just accept a slice instead? It's a reference type after all...
-// eg
-// var out []*Document
-// coll.Find(q, &out)
-func (coll *Collection) Find(q Query, result interface{}) {
-	coll.RLock()
-	defer coll.RUnlock()
-	var resultv, slicev reflect.Value
-	var elementt reflect.Type
-	var typeOK = false
-	// we're very picky about what we shove the results into...
-	resultv = reflect.ValueOf(result)
-	if resultv.Kind() == reflect.Ptr {
-		slicev = resultv.Elem()
-
-		if slicev.Kind() == reflect.Slice {
-			elementt = slicev.Type().Elem()
-			if elementt.Kind() == reflect.Ptr {
-				typeOK = true
-			}
-		}
-	}
-	if !typeOK {
-		panic("result must be pointer to a slice of pointers")
-	}
-
-	ids := q.perform(coll)
-
-	outv := reflect.MakeSlice(reflect.SliceOf(elementt), len(ids), len(ids))
-	idx := 0
-	for id, _ := range ids {
-		doc := coll.docs[id]
-		docv := reflect.ValueOf(doc)
-		outv.Index(idx).Set(docv)
-		idx++
-	}
-	resultv.Elem().Set(outv)
+func (coll *Collection) Find(q Query) DocSet {
+	return nil
 }
 
-//
-func (coll *Collection) Update(q Query, modifyFn func(interface{})) int {
+func (coll *Collection) IndexText(docID DocID, field string, txt string, startPos TermPos) TermPos {
+	fmt.Printf("lock?\n")
 	coll.Lock()
 	defer coll.Unlock()
-	ids := q.perform(coll)
-	cnt := 0
-	for id, _ := range ids {
-		doc := coll.docs[id]
-		modifyFn(doc)
-		cnt++
+
+	fmt.Printf("locked\n")
+	policy := coll.fieldPolicy(field)
+	if _, got := coll.indices[field]; !got {
+		coll.indices[field] = make(index)
 	}
-	coll.dirty = true
-	return cnt
+	idx := coll.indices[field]
+
+	terms := policy.SplitTerms(txt)
+	fmt.Printf("terms: %q\n", terms)
+	for i, _ := range terms {
+		terms[i] = policy.CleanTerm(terms[i])
+	}
+
+	pos := startPos
+	for _, term := range terms {
+		if !policy.IsStopword(term) {
+			if _, got := idx[term]; !got {
+				idx[term] = termMap{} // first encounter of this term
+			}
+			idx[term][docID] = append(idx[term][docID], pos)
+		}
+		pos++
+	}
+
+	coll.allDocs[docID] = struct{}{}
+	return pos
 }
