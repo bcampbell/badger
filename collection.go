@@ -3,6 +3,7 @@ package badger
 import (
 	"fmt"
 	"reflect"
+	"strconv"
 	"strings"
 	"sync"
 )
@@ -139,8 +140,18 @@ func (coll *Collection) find(field string, cmp func(string) bool) docSet {
 
 	matching := docSet{}
 
-	// string or []string?
+	//
 	switch sf.Type.Kind() {
+	case reflect.Int:
+		//
+		for id, doc := range coll.docs {
+			s := reflect.ValueOf(doc).Elem() // get struct
+			f := s.FieldByIndex(sf.Index)
+			val := strconv.FormatInt(f.Int(), 10)
+			if cmp(val) {
+				matching[id] = struct{}{}
+			}
+		}
 	case reflect.String:
 		//
 		for id, doc := range coll.docs {
@@ -164,7 +175,7 @@ func (coll *Collection) find(field string, cmp func(string) bool) docSet {
 			}
 		}
 	default:
-		panic("can only query string and []string fields")
+		panic("can only query numeric, string and []string fields")
 	}
 	return matching
 }
