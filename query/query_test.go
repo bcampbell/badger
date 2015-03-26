@@ -67,6 +67,9 @@ func TestQueries(t *testing.T) {
 		{"content:grapefruit", "2,4"},
 		{`content:"view from"`, "1"},
 		{`content:"right after all"`, "1"},
+		{"id:[2 TO 4]", "2,3,4"},  // integer range
+		{"id:[ TO 4]", "1,2,3,4"}, // integer range
+		{"id:[ 3 TO ]", "3,4,5"},  // integer range
 	}
 
 	coll := badger.NewCollection(&TestDoc{})

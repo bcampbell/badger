@@ -3,6 +3,7 @@ package badger
 import (
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -206,81 +207,124 @@ func (q *andQuery) perform(coll *Collection) docSet {
 	return Intersect(a, b)
 }
 
-type rangeKind int
+const maxUint = ^uint(0)
+const minUint = 0
+const maxInt = int(maxUint >> 1)
+const minInt = -maxInt - 1
 
-const (
-	str rangeKind = iota
-	date
-)
-
-type rangeQuery struct {
-	kind               rangeKind
-	field, first, last string
-}
+var dateExtractPat *regexp.Regexp = regexp.MustCompile(`\d{4}-\d{2}-\d{2}`)
 
 // NewRangeQuery returns a query to match docs with field values within
 // inclusive range [first,last]
 func NewRangeQuery(field, first, last string) Query {
 	datePat := regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
 
-	var kind rangeKind
 	if first == "" && last == "" {
 		return NewNilQuery()
-	} else if first == "" && datePat.MatchString(last) {
-		kind = date
-	} else if last == "" && datePat.MatchString(first) {
-		kind = date
-	} else if datePat.MatchString(first) && datePat.MatchString(last) {
-		kind = date
+	}
+	if first == "" && datePat.MatchString(last) {
+		return &dateRangeQuery{field, first, last}
+	}
+	if last == "" && datePat.MatchString(first) {
+		return &dateRangeQuery{field, first, last}
+	}
+	if datePat.MatchString(first) && datePat.MatchString(last) {
+		return &dateRangeQuery{field, first, last}
 	}
 
-	return &rangeQuery{kind: kind, field: field, first: strings.ToLower(first), last: strings.ToLower(last)}
+	a, aErr := strconv.Atoi(first)
+	b, bErr := strconv.Atoi(last)
+	if first == "" && bErr == nil {
+		return &intRangeQuery{field, minInt, b}
+	}
+
+	if aErr == nil && last == "" {
+		return &intRangeQuery{field, a, maxInt}
+	}
+
+	if aErr == nil && bErr == nil {
+		return &intRangeQuery{field, a, b}
+	}
+
+	return &strRangeQuery{field, strings.ToLower(first), strings.ToLower(last)}
+
 }
 
-func (q *rangeQuery) String() string {
+// string range
+type strRangeQuery struct {
+	field, first, last string
+}
+
+func (q *strRangeQuery) String() string {
+	return q.field + ": [" + q.first + " TO " + q.last + "]"
+}
+func (q *strRangeQuery) perform(coll *Collection) docSet {
+	// straight string compare
+	// TODO: less-than/greater-than special cases
+	return coll.find(q.field, func(foo string) bool {
+		foo = strings.ToLower(foo)
+		return foo >= q.first && foo <= q.last
+	})
+}
+
+// date range
+type dateRangeQuery struct {
+	field, first, last string
+}
+
+func (q *dateRangeQuery) String() string {
 	return q.field + ": [" + q.first + " TO " + q.last + "]"
 }
 
-var dateExtractPat *regexp.Regexp = regexp.MustCompile(`\d{4}-\d{2}-\d{2}`)
-
-func (q *rangeQuery) perform(coll *Collection) docSet {
-	if q.kind == str {
-		// straight string compare
-		// TODO: less-than/greater-than special cases
-		return coll.find(q.field, func(foo string) bool {
-			foo = strings.ToLower(foo)
-			return foo >= q.first && foo <= q.last
-		})
-	} else {
-		// date compare
-		if q.first == "" {
-			// less-than-or-equal-to
-			return coll.find(q.field, func(foo string) bool {
-				foo = dateExtractPat.FindString(foo)
-				if foo == "" {
-					return false
-				}
-				return foo <= q.last
-			})
-		}
-
-		if q.last == "" {
-			// greater-than-or-equal-to
-			return coll.find(q.field, func(foo string) bool {
-				foo = dateExtractPat.FindString(foo)
-				if foo == "" {
-					return false
-				}
-				return foo >= q.first
-			})
-		}
-		// inclusive range compare
+func (q *dateRangeQuery) perform(coll *Collection) docSet {
+	// date compare
+	if q.first == "" {
+		// less-than-or-equal-to
 		return coll.find(q.field, func(foo string) bool {
 			foo = dateExtractPat.FindString(foo)
 			if foo == "" {
 				return false
 			}
-			return foo >= q.first && foo <= q.last
+			return foo <= q.last
 		})
 	}
+
+	if q.last == "" {
+		// greater-than-or-equal-to
+		return coll.find(q.field, func(foo string) bool {
+			foo = dateExtractPat.FindString(foo)
+			if foo == "" {
+				return false
+			}
+			return foo >= q.first
+		})
+	}
+	// inclusive range compare
+	return coll.find(q.field, func(foo string) bool {
+		foo = dateExtractPat.FindString(foo)
+		if foo == "" {
+			return false
+		}
+		return foo >= q.first && foo <= q.last
+	})
+}
+
+// inclusive integer range
+type intRangeQuery struct {
+	field       string
+	first, last int
+}
+
+func (q *intRangeQuery) String() string {
+	return fmt.Sprintf("%s: [%d TO %d]", q.field, q.first, q.last)
+}
+
+func (q *intRangeQuery) perform(coll *Collection) docSet {
+	return coll.find(q.field, func(foo string) bool {
+		v, err := strconv.Atoi(foo)
+		if err != nil {
+			return false
+		}
+		return v >= q.first && v <= q.last
+	})
 }
